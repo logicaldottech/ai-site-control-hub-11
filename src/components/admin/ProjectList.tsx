@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Eye, ExternalLink, Pencil, Search, Server, Trash, Plus, Zap, Globe, Laptop, Wrench } from "lucide-react";
+import { Eye, ExternalLink, Pencil, Search, Server, Trash, Plus, Zap, Globe, Laptop, Wrench, Link } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import '@fortawesome/fontawesome-free/css/all.min.css';
@@ -17,6 +17,7 @@ import {
 import { httpFile } from "../../config.js";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
+import { ConnectHostingDialog } from "./ConnectHostingDialog";
 
 export function ProjectList() {
   const [searchTerm, setSearchTerm] = useState("");
@@ -26,6 +27,7 @@ export function ProjectList() {
   const [totalProjects, setTotalProjects] = useState(0);
   const [projects, setProjects] = useState([]);
   const [Activeprojects, setActiveProjects] = useState([]);
+  const [connectHostingDialog, setConnectHostingDialog] = useState({ open: false, projectId: '', projectName: '' });
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -161,6 +163,10 @@ useEffect(() => {
 
   const handleUpdateProject = (id) => {
     navigate(`/admin/project/${id}/details`);
+  };
+
+  const handleConnectHosting = (projectId, projectName) => {
+    setConnectHostingDialog({ open: true, projectId, projectName });
   };
 
   return (
@@ -337,6 +343,15 @@ useEffect(() => {
                       Update
                     </Button>
                   </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-xs h-8 w-full text-green-600 hover:text-green-700"
+                    onClick={() => handleConnectHosting(project._id, project.projectName)}
+                  >
+                    <Link className="h-3 w-3 mr-1" />
+                    Connect Hosting
+                  </Button>
                 </div>
               </div>
             </CardContent>
@@ -420,6 +435,13 @@ useEffect(() => {
           </Pagination>
         </div>
       )}
+
+      <ConnectHostingDialog
+        open={connectHostingDialog.open}
+        onOpenChange={(open) => setConnectHostingDialog(prev => ({ ...prev, open }))}
+        projectId={connectHostingDialog.projectId}
+        projectName={connectHostingDialog.projectName}
+      />
     </div>
   );
 }
