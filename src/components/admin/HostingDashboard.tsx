@@ -1,19 +1,39 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Server, FileText, Globe } from "lucide-react";
-import { CredentialManager } from "./CredentialManager";
-import { FileManager } from "./FileManager";
-import { HostingCredential } from "@/utils/credentialManager";
+import { Button } from "@/components/ui/button";
+import { toast } from "@/hooks/use-toast";
+import { RefreshCw, Server } from "lucide-react";
+import { HostingConnection, getMyHostings } from "@/api/newHostingApi";
+import { HostingList } from "./HostingList";
+import { AddHostingDialog } from "./AddHostingDialog";
 
 export function HostingDashboard() {
-  const [activeTab, setActiveTab] = useState("credentials");
-  const [selectedCredential, setSelectedCredential] = useState<HostingCredential | null>(null);
+  const [hostings, setHostings] = useState<HostingConnection[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleFileManagerOpen = (credential: HostingCredential) => {
-    setSelectedCredential(credential);
-    setActiveTab("filemanager");
+  const fetchHostings = async () => {
+    setIsLoading(true);
+    try {
+      const data = await getMyHostings();
+      setHostings(data);
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: `Failed to fetch hosting connections: ${error}`,
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchHostings();
+  }, []);
+
+  const handleHostingAdded = () => {
+    fetchHostings();
   };
 
   return (
@@ -22,67 +42,24 @@ export function HostingDashboard() {
         <div>
           <h1 className="text-3xl font-bold">Hosting Management</h1>
           <p className="text-gray-600 mt-2">
-            Manage your hosting credentials and files
+            Manage your hosting connections and credentials
           </p>
+        </div>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={fetchHostings}
+            disabled={isLoading}
+            className="flex items-center gap-2"
+          >
+            <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+          <AddHostingDialog onHostingAdded={handleHostingAdded} />
         </div>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="credentials" className="flex items-center gap-2">
-            <Server className="h-4 w-4" />
-            Credentials
-          </TabsTrigger>
-          <TabsTrigger 
-            value="filemanager" 
-            className="flex items-center gap-2"
-            disabled={!selectedCredential}
-          >
-            <FileText className="h-4 w-4" />
-            File Manager
-          </TabsTrigger>
-          <TabsTrigger value="domains" className="flex items-center gap-2">
-            <Globe className="h-4 w-4" />
-            Domains
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="credentials" className="space-y-4">
-          <CredentialManager onFileManagerOpen={handleFileManagerOpen} />
-        </TabsContent>
-
-        <TabsContent value="filemanager" className="space-y-4">
-          {selectedCredential ? (
-            <FileManager credential={selectedCredential} />
-          ) : (
-            <Card>
-              <CardContent className="pt-6">
-                <div className="text-center py-10">
-                  <FileText className="h-12 w-12 mx-auto mb-4 text-gray-400" />
-                  <h3 className="text-lg font-medium mb-2">No hosting account selected</h3>
-                  <p className="text-gray-500">
-                    Please select a hosting account from the Credentials tab to access the file manager.
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </TabsContent>
-
-        <TabsContent value="domains" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Domain Management</CardTitle>
-              <CardDescription>
-                Manage your domains and DNS settings
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-gray-500">Domain management features coming soon...</p>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+      <HostingList hostings={hostings} />
     </div>
   );
 }
