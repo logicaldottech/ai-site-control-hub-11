@@ -4,7 +4,7 @@ import { http } from '@/config';
 export interface HostingConnection {
   _id: string;
   userId: string;
-  connectionType: 'ftp' | 'cpanel';
+  connectionType: 'ftp' | 'cpanel' | 'ssh' | 'vps';
   connectionConfig: string;
   status: 'success' | 'failed';
   createdAt: string;
@@ -17,7 +17,7 @@ export interface GetHostingsResponse {
 }
 
 export interface AddHostingRequest {
-  connectionType: 'ftp' | 'cpanel';
+  connectionType: 'ftp' | 'cpanel' | 'ssh' | 'vps';
   connectionConfig: string;
 }
 
@@ -53,9 +53,8 @@ export const addHosting = async (request: AddHostingRequest): Promise<void> => {
 export interface BrowseDirectoryResponse {
   message: string;
   data: {
-    type: 'file' | 'directory';
     name: string;
-    path: string;
+    fullPath: string;
   }[];
 }
 
@@ -66,13 +65,14 @@ export interface LinkProjectRequest {
   rootPath: string;
 }
 
-// Browse hosting directories (for FTP)
+// Browse hosting directories
 export const browseHostingDirectories = async (hostingId: string, path = ''): Promise<BrowseDirectoryResponse['data']> => {
   try {
     const formData = new FormData();
-    formData.append('connectionType', 'ftp');
+    formData.append('hostingId', hostingId);
+    formData.append('path', path);
     
-    const response = await http.get<BrowseDirectoryResponse>(`/browseHostingDirectories?hostingId=${hostingId}&path=${path}`, {
+    const response = await http.post<BrowseDirectoryResponse>('/browseHostingDirectories', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },

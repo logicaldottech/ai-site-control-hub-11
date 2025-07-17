@@ -17,9 +17,8 @@ interface ConnectHostingDialogProps {
 }
 
 interface DirectoryItem {
-  type: 'file' | 'directory';
   name: string;
-  path: string;
+  fullPath: string;
 }
 
 export function ConnectHostingDialog({ open, onOpenChange, projectId, projectName }: ConnectHostingDialogProps) {
@@ -94,9 +93,7 @@ export function ConnectHostingDialog({ open, onOpenChange, projectId, projectNam
   };
 
   const handleDirectoryClick = (dir: DirectoryItem) => {
-    if (dir.type === 'directory') {
-      browseDirectories(selectedHosting!._id, dir.path);
-    }
+    browseDirectories(selectedHosting!._id, dir.fullPath);
   };
 
   const navigateToPath = (pathIndex: number) => {
@@ -289,14 +286,12 @@ export function ConnectHostingDialog({ open, onOpenChange, projectId, projectNam
                   {directories.map((item, index) => (
                     <div
                       key={index}
-                      className={`p-3 border-b last:border-b-0 cursor-pointer hover:bg-gray-50 flex items-center ${
-                        item.type === 'directory' ? '' : 'opacity-50'
-                      }`}
-                      onClick={() => item.type === 'directory' && handleDirectoryClick(item)}
+                      className="p-3 border-b last:border-b-0 cursor-pointer hover:bg-gray-50 flex items-center"
+                      onClick={() => handleDirectoryClick(item)}
                     >
                       <FolderOpen className="h-4 w-4 mr-2" />
                       <span>{item.name}</span>
-                      {item.type === 'directory' && <ChevronRight className="h-4 w-4 ml-auto" />}
+                      <ChevronRight className="h-4 w-4 ml-auto" />
                     </div>
                   ))}
                 </>

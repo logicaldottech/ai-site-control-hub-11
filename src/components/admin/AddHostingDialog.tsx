@@ -14,7 +14,7 @@ interface AddHostingDialogProps {
   onHostingAdded: () => void;
 }
 
-type ConnectionType = 'ftp' | 'cpanel';
+type ConnectionType = 'ftp' | 'cpanel' | 'ssh' | 'vps';
 
 interface FtpConfig {
   host: string;
@@ -28,6 +28,14 @@ interface CpanelConfig {
   username: string;
   token: string;
   testUrl: string;
+}
+
+interface VpsConfig {
+  host: string;
+  username: string;
+  password: string;
+  port: number;
+  secure: boolean;
 }
 
 export function AddHostingDialog({ onHostingAdded }: AddHostingDialogProps) {
@@ -47,6 +55,12 @@ export function AddHostingDialog({ onHostingAdded }: AddHostingDialogProps) {
   const [cpanelToken, setCpanelToken] = useState('');
   const [cpanelTestUrl, setCpanelTestUrl] = useState('');
 
+  // VPS/SSH form fields
+  const [vpsHost, setVpsHost] = useState('');
+  const [vpsUsername, setVpsUsername] = useState('');
+  const [vpsPassword, setVpsPassword] = useState('');
+  const [vpsPort, setVpsPort] = useState('22');
+
   const resetForm = () => {
     setFtpHost('');
     setFtpUsername('');
@@ -56,6 +70,10 @@ export function AddHostingDialog({ onHostingAdded }: AddHostingDialogProps) {
     setCpanelUsername('');
     setCpanelToken('');
     setCpanelTestUrl('');
+    setVpsHost('');
+    setVpsUsername('');
+    setVpsPassword('');
+    setVpsPort('22');
   };
 
   const handleSubmit = async () => {
@@ -81,7 +99,7 @@ export function AddHostingDialog({ onHostingAdded }: AddHostingDialogProps) {
           secure: ftpSecure
         };
         connectionConfig = JSON.stringify(ftpConfig);
-      } else {
+      } else if (connectionType === 'cpanel') {
         if (!cpanelUsername || !cpanelToken || !cpanelTestUrl) {
           toast({
             title: "Validation Error",
@@ -97,6 +115,24 @@ export function AddHostingDialog({ onHostingAdded }: AddHostingDialogProps) {
           testUrl: cpanelTestUrl
         };
         connectionConfig = JSON.stringify(cpanelConfig);
+      } else if (connectionType === 'ssh' || connectionType === 'vps') {
+        if (!vpsHost || !vpsUsername || !vpsPassword) {
+          toast({
+            title: "Validation Error",
+            description: "Please fill in all required VPS/SSH fields",
+            variant: "destructive"
+          });
+          return;
+        }
+
+        const vpsConfig: VpsConfig = {
+          host: vpsHost,
+          username: vpsUsername,
+          password: vpsPassword,
+          port: parseInt(vpsPort),
+          secure: false
+        };
+        connectionConfig = JSON.stringify(vpsConfig);
       }
 
       await addHosting({
@@ -149,6 +185,8 @@ export function AddHostingDialog({ onHostingAdded }: AddHostingDialogProps) {
                 <SelectContent>
                   <SelectItem value="ftp">FTP</SelectItem>
                   <SelectItem value="cpanel">cPanel</SelectItem>
+                  <SelectItem value="ssh">SSH</SelectItem>
+                  <SelectItem value="vps">VPS</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -223,6 +261,49 @@ export function AddHostingDialog({ onHostingAdded }: AddHostingDialogProps) {
                     value={cpanelTestUrl}
                     onChange={(e) => setCpanelTestUrl(e.target.value)}
                     placeholder="https://domain.com:2083/execute/Version/get"
+                  />
+                </div>
+              </>
+            )}
+
+            {(connectionType === 'ssh' || connectionType === 'vps') && (
+              <>
+                <div>
+                  <Label htmlFor="vpsHost">Host *</Label>
+                  <Input
+                    id="vpsHost"
+                    value={vpsHost}
+                    onChange={(e) => setVpsHost(e.target.value)}
+                    placeholder="82.25.110.201"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="vpsUsername">Username *</Label>
+                  <Input
+                    id="vpsUsername"
+                    value={vpsUsername}
+                    onChange={(e) => setVpsUsername(e.target.value)}
+                    placeholder="root"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="vpsPassword">Password *</Label>
+                  <Input
+                    id="vpsPassword"
+                    type="password"
+                    value={vpsPassword}
+                    onChange={(e) => setVpsPassword(e.target.value)}
+                    placeholder="your-password"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="vpsPort">Port</Label>
+                  <Input
+                    id="vpsPort"
+                    type="number"
+                    value={vpsPort}
+                    onChange={(e) => setVpsPort(e.target.value)}
+                    placeholder="22"
                   />
                 </div>
               </>

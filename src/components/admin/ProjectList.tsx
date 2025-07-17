@@ -17,7 +17,7 @@ import {
 import { httpFile } from "../../config.js";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
-import { ConnectHostingDialog } from "./ConnectHostingDialog";
+import { DeploymentDialog } from "./DeploymentDialog";
 
 export function ProjectList() {
   const [searchTerm, setSearchTerm] = useState("");
@@ -27,7 +27,7 @@ export function ProjectList() {
   const [totalProjects, setTotalProjects] = useState(0);
   const [projects, setProjects] = useState([]);
   const [Activeprojects, setActiveProjects] = useState([]);
-  const [connectHostingDialog, setConnectHostingDialog] = useState({ open: false, projectId: '', projectName: '' });
+  const [deploymentDialog, setDeploymentDialog] = useState({ open: false, projectId: '', projectName: '', hostingId: '' });
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -165,8 +165,8 @@ useEffect(() => {
     navigate(`/admin/project/${id}/details`);
   };
 
-  const handleConnectHosting = (projectId, projectName) => {
-    setConnectHostingDialog({ open: true, projectId, projectName });
+  const handleDeploy = (projectId, projectName, hostingId = '') => {
+    setDeploymentDialog({ open: true, projectId, projectName, hostingId });
   };
 
   return (
@@ -347,10 +347,10 @@ useEffect(() => {
                     variant="outline"
                     size="sm"
                     className="text-xs h-8 w-full text-green-600 hover:text-green-700"
-                    onClick={() => handleConnectHosting(project._id, project.projectName)}
+                    onClick={() => handleDeploy(project._id, project.projectName, project.hostingId)}
                   >
                     <Link className="h-3 w-3 mr-1" />
-                    Connect Hosting
+                    Deploy
                   </Button>
                 </div>
               </div>
@@ -436,11 +436,12 @@ useEffect(() => {
         </div>
       )}
 
-      <ConnectHostingDialog
-        open={connectHostingDialog.open}
-        onOpenChange={(open) => setConnectHostingDialog(prev => ({ ...prev, open }))}
-        projectId={connectHostingDialog.projectId}
-        projectName={connectHostingDialog.projectName}
+      <DeploymentDialog
+        open={deploymentDialog.open}
+        onOpenChange={(open) => setDeploymentDialog(prev => ({ ...prev, open }))}
+        projectId={deploymentDialog.projectId}
+        projectName={deploymentDialog.projectName}
+        preSelectedHostingId={deploymentDialog.hostingId}
       />
     </div>
   );
