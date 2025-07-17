@@ -1,5 +1,5 @@
 
-import { httpHosting } from '@/config';
+import { httpFile } from '@/config';
 
 export interface ConnectionTestRequest {
   protocol: 'ftp' | 'sftp' | 'api' | 'cpanel' | 'plesk' | 'directadmin';
@@ -61,7 +61,10 @@ export const testConnection = async (credentials: ConnectionTestRequest): Promis
     }
 
     // For other protocols, use the original logic
-    const response = await httpHosting.post('/test-connection', credentials);
+    const token = localStorage.getItem("token");
+    const response = await httpFile.post('test-connection', credentials, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
     return response.data;
   } catch (error: any) {
     console.error('Connection test failed:', error);

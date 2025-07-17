@@ -1,5 +1,5 @@
 
-import { http } from '@/config';
+import { httpFile } from '@/config';
 
 export interface VerificationRequest {
   domain: string;
@@ -32,7 +32,10 @@ export interface VerificationResponse {
 
 export const verifyDomain = async (request: VerificationRequest): Promise<VerificationResponse> => {
   try {
-    const response = await http.post('/domain-verification/verify', request);
+    const token = localStorage.getItem("token");
+    const response = await httpFile.post('domain-verification/verify', request, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
     return response.data;
   } catch (error: any) {
     console.error('Domain verification failed:', error);
@@ -45,7 +48,10 @@ export const verifyDomain = async (request: VerificationRequest): Promise<Verifi
 
 export const checkDNSRecord = async (request: DNSCheckRequest): Promise<boolean> => {
   try {
-    const response = await http.post('/domain-verification/check-dns', request);
+    const token = localStorage.getItem("token");
+    const response = await httpFile.post('domain-verification/check-dns', request, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
     return response.data.found;
   } catch (error: any) {
     console.error('DNS check failed:', error);
@@ -55,7 +61,10 @@ export const checkDNSRecord = async (request: DNSCheckRequest): Promise<boolean>
 
 export const checkVerificationFile = async (request: FileCheckRequest): Promise<boolean> => {
   try {
-    const response = await http.post('/domain-verification/check-file', request);
+    const token = localStorage.getItem("token");
+    const response = await httpFile.post('domain-verification/check-file', request, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
     return response.data.found;
   } catch (error: any) {
     console.error('File check failed:', error);
@@ -65,7 +74,10 @@ export const checkVerificationFile = async (request: FileCheckRequest): Promise<
 
 export const checkMetaTag = async (request: MetaCheckRequest): Promise<boolean> => {
   try {
-    const response = await http.post('/domain-verification/check-meta', request);
+    const token = localStorage.getItem("token");
+    const response = await httpFile.post('domain-verification/check-meta', request, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
     return response.data.found;
   } catch (error: any) {
     console.error('Meta tag check failed:', error);

@@ -1,5 +1,5 @@
 
-import { http } from '@/config';
+import { httpFile } from '@/config';
 
 export interface HostingConnection {
   _id: string;
@@ -24,7 +24,10 @@ export interface AddHostingRequest {
 // Get user's hosting connections
 export const getMyHostings = async (): Promise<HostingConnection[]> => {
   try {
-    const response = await http.get<GetHostingsResponse>('/getMyHostings');
+    const token = localStorage.getItem("token");
+    const response = await httpFile.get<GetHostingsResponse>('getMyHostings', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
     return response.data.data;
   } catch (error: any) {
     console.error('Failed to fetch hostings:', error);
@@ -35,14 +38,13 @@ export const getMyHostings = async (): Promise<HostingConnection[]> => {
 // Add new hosting connection
 export const addHosting = async (request: AddHostingRequest): Promise<void> => {
   try {
+    const token = localStorage.getItem("token");
     const formData = new FormData();
     formData.append('connectionType', request.connectionType);
     formData.append('connectionConfig', request.connectionConfig);
 
-    await http.post('/addHosting', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
+    await httpFile.post('addHosting', formData, {
+      headers: { Authorization: `Bearer ${token}` }
     });
   } catch (error: any) {
     console.error('Failed to add hosting:', error);
@@ -68,14 +70,13 @@ export interface LinkProjectRequest {
 // Browse hosting directories
 export const browseHostingDirectories = async (hostingId: string, path = ''): Promise<BrowseDirectoryResponse['data']> => {
   try {
+    const token = localStorage.getItem("token");
     const formData = new FormData();
     formData.append('hostingId', hostingId);
     formData.append('path', path);
     
-    const response = await http.post<BrowseDirectoryResponse>('/browseHostingDirectories', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
+    const response = await httpFile.post<BrowseDirectoryResponse>('browseHostingDirectories', formData, {
+      headers: { Authorization: `Bearer ${token}` }
     });
     return response.data.data;
   } catch (error: any) {
@@ -87,16 +88,15 @@ export const browseHostingDirectories = async (hostingId: string, path = ''): Pr
 // Link project to hosting
 export const linkProjectToHosting = async (request: LinkProjectRequest): Promise<void> => {
   try {
+    const token = localStorage.getItem("token");
     const formData = new FormData();
     formData.append('hostingId', request.hostingId);
     formData.append('projectId', request.projectId);
     formData.append('domainName', request.domainName);
     formData.append('rootPath', request.rootPath);
 
-    await http.post('/linkProjectToHosting', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
+    await httpFile.post('linkProjectToHosting', formData, {
+      headers: { Authorization: `Bearer ${token}` }
     });
   } catch (error: any) {
     console.error('Failed to link project to hosting:', error);

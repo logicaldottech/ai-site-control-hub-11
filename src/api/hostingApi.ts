@@ -1,5 +1,5 @@
 
-import { httpHosting } from '@/config';
+import { httpFile } from '@/config';
 import { HostingCredential, ConnectionProtocol } from '@/utils/credentialManager';
 
 export interface UploadRequest {
@@ -36,7 +36,10 @@ export interface DeploymentResponse {
 
 export const uploadFiles = async (request: UploadRequest): Promise<boolean> => {
   try {
-    const response = await httpHosting.post('/upload', request);
+    const token = localStorage.getItem("token");
+    const response = await httpFile.post('upload', request, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
     return response.data.success;
   } catch (error: any) {
     console.error('File upload failed:', error);
@@ -46,7 +49,10 @@ export const uploadFiles = async (request: UploadRequest): Promise<boolean> => {
 
 export const deployWebsite = async (request: DeploymentRequest): Promise<DeploymentResponse> => {
   try {
-    const response = await httpHosting.post('/deploy', request);
+    const token = localStorage.getItem("token");
+    const response = await httpFile.post('deploy', request, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
     return response.data;
   } catch (error: any) {
     console.error('Deployment failed:', error);
@@ -56,7 +62,10 @@ export const deployWebsite = async (request: DeploymentRequest): Promise<Deploym
 
 export const getDeploymentStatus = async (deploymentId: string) => {
   try {
-    const response = await httpHosting.get(`/deployment-status/${deploymentId}`);
+    const token = localStorage.getItem("token");
+    const response = await httpFile.get(`deployment-status/${deploymentId}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
     return response.data;
   } catch (error: any) {
     console.error('Failed to get deployment status:', error);

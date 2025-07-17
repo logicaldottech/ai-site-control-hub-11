@@ -1,7 +1,7 @@
 
 import { toast } from "@/hooks/use-toast";
 import { HostingCredential, ConnectionProtocol } from "./credentialManager";
-import { httpHosting } from '@/config';
+import { httpFile } from '@/config';
 
 // Types for file operations
 export type FileTransferOptions = {
@@ -38,41 +38,51 @@ export const listFiles = async (
     let response;
 
     // Make real API calls based on protocol
+    const token = localStorage.getItem("token");
+    
     switch (protocol) {
       case 'cpanel':
-        response = await httpHosting.post('/cpanel/list-files', {
+        response = await httpFile.post('cpanel/list-files', {
           host: credential.server?.replace(/\/+$/, ''), // Remove trailing slashes
           username: credential.username,
           password: credential.password,
           path: path,
           port: credential.port || 2083
+        }, {
+          headers: { Authorization: `Bearer ${token}` }
         });
         break;
       case 'ftp':
       case 'sftp':
-        response = await httpHosting.post('/ftp/list-files', {
+        response = await httpFile.post('ftp/list-files', {
           host: credential.server,
           port: credential.port || (protocol === 'sftp' ? 22 : 21),
           username: credential.username,
           password: credential.password,
           protocol: protocol,
           path: path
+        }, {
+          headers: { Authorization: `Bearer ${token}` }
         });
         break;
       case 'plesk':
-        response = await httpHosting.post('/plesk/list-files', {
+        response = await httpFile.post('plesk/list-files', {
           host: credential.server,
           username: credential.username,
           password: credential.password,
           path: path
+        }, {
+          headers: { Authorization: `Bearer ${token}` }
         });
         break;
       case 'directadmin':
-        response = await httpHosting.post('/directadmin/list-files', {
+        response = await httpFile.post('directadmin/list-files', {
           host: credential.server,
           username: credential.username,
           password: credential.password,
           path: path
+        }, {
+          headers: { Authorization: `Bearer ${token}` }
         });
         break;
       default:
@@ -181,21 +191,24 @@ export const uploadFile = async (
     });
 
     let response;
+    const token = localStorage.getItem("token");
     
     switch (protocol) {
       case 'cpanel':
-        response = await httpHosting.post('/cpanel/upload-file', {
+        response = await httpFile.post('cpanel/upload-file', {
           host: credential.server?.replace(/\/+$/, ''),
           username: credential.username,
           password: credential.password,
           remotePath,
           content,
           port: credential.port || 2083
+        }, {
+          headers: { Authorization: `Bearer ${token}` }
         });
         break;
       case 'ftp':
       case 'sftp':
-        response = await httpHosting.post('/ftp/upload-file', {
+        response = await httpFile.post('ftp/upload-file', {
           host: credential.server,
           port: credential.port || (protocol === 'sftp' ? 22 : 21),
           username: credential.username,
@@ -203,6 +216,8 @@ export const uploadFile = async (
           protocol,
           remotePath,
           content
+        }, {
+          headers: { Authorization: `Bearer ${token}` }
         });
         break;
       default:
@@ -240,26 +255,31 @@ export const deleteFile = async (
     console.log(`Deleting file ${path} using ${protocol}`);
     
     let response;
+    const token = localStorage.getItem("token");
     
     switch (protocol) {
       case 'cpanel':
-        response = await httpHosting.post('/cpanel/delete-file', {
+        response = await httpFile.post('cpanel/delete-file', {
           host: credential.server?.replace(/\/+$/, ''),
           username: credential.username,
           password: credential.password,
           path,
           port: credential.port || 2083
+        }, {
+          headers: { Authorization: `Bearer ${token}` }
         });
         break;
       case 'ftp':
       case 'sftp':
-        response = await httpHosting.post('/ftp/delete-file', {
+        response = await httpFile.post('ftp/delete-file', {
           host: credential.server,
           port: credential.port || (protocol === 'sftp' ? 22 : 21),
           username: credential.username,
           password: credential.password,
           protocol,
           path
+        }, {
+          headers: { Authorization: `Bearer ${token}` }
         });
         break;
       default:
