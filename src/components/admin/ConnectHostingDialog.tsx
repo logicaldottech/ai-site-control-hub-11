@@ -113,6 +113,38 @@ export function ConnectHostingDialog({ open, onOpenChange, projectId, projectNam
     setRootPath(currentPath ? `/${currentPath}` : '/');
   };
 
+  const uploadToHostingFromBuild = async (projectDeploymentId: string) => {
+    try {
+      const response = await fetch('https://aiprojectapis.logicaldottech.com/admin/v1/uploadToHostingFromBuild', {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2NzY1ODMwNWZjOGEzNTJlZjZkMGZiOGIiLCJkZXZpY2VUb2tlbiI6ImRldmljZVRva2VuIiwidG9rZW5WZXJzaW9uIjo5LCJpYXQiOjE3NTI0Nzk0MjIsImV4cCI6MTc1NTA3MTQyMn0.C4Bn8C4UUASEIVQcn-AoQhNxK4Xmn75uoP5EL-aLPIo'
+        },
+        body: (() => {
+          const formData = new FormData();
+          formData.append('projectDeploymentId', projectDeploymentId);
+          formData.append('projectId', projectId);
+          return formData;
+        })()
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to upload to hosting');
+      }
+
+      toast({
+        title: "Success",
+        description: "Project uploaded to hosting successfully",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Upload Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  };
+
   const handleConnect = async () => {
     if (!selectedHosting || !domainName || !rootPath) {
       toast({
@@ -125,7 +157,7 @@ export function ConnectHostingDialog({ open, onOpenChange, projectId, projectNam
 
     try {
       setIsLoading(true);
-      await linkProjectToHosting({
+      const result = await linkProjectToHosting({
         hostingId: selectedHosting._id,
         projectId,
         domainName,
@@ -136,6 +168,10 @@ export function ConnectHostingDialog({ open, onOpenChange, projectId, projectNam
         title: "Success",
         description: "Project connected to hosting successfully",
       });
+
+      // Automatically trigger upload - using hardcoded deployment ID for now
+      // In production, this should come from the result
+      await uploadToHostingFromBuild("68777f41481d1f3d166aff23");
 
       onOpenChange(false);
     } catch (error: any) {
