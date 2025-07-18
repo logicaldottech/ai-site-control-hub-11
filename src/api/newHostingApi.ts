@@ -1,4 +1,3 @@
-
 import { httpFile } from '@/config';
 
 export interface HostingConnection {
@@ -101,5 +100,22 @@ export const linkProjectToHosting = async (request: LinkProjectRequest): Promise
   } catch (error: any) {
     console.error('Failed to link project to hosting:', error);
     throw new Error(error.response?.data?.message || 'Failed to link project to hosting');
+  }
+};
+
+// Set current hosting for project
+export const setCurrentHostingForProject = async (request: { projectId: string, hostingId: string }): Promise<void> => {
+  try {
+    const token = localStorage.getItem("token");
+    const formData = new FormData();
+    formData.append('projectId', request.projectId);
+    formData.append('hostingId', request.hostingId);
+
+    await httpFile.post('setCurrentHostingForProject', formData, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+  } catch (error: any) {
+    console.error('Failed to set current hosting for project:', error);
+    throw new Error(error.response?.data?.message || 'Failed to set current hosting for project');
   }
 };

@@ -6,7 +6,8 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { FolderOpen, ChevronRight, ArrowLeft, Check, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { getMyHostings, browseHostingDirectories, linkProjectToHosting, HostingConnection } from "@/api/newHostingApi";
+import { getMyHostings, browseHostingDirectories, linkProjectToHosting, HostingConnection, setCurrentHostingForProject } from "@/api/newHostingApi";
+import { httpFile } from "@/config";
 
 interface DeploymentDialogProps {
   open: boolean;
@@ -21,12 +22,12 @@ interface DirectoryItem {
   fullPath: string;
 }
 
-export function DeploymentDialog({ 
-  open, 
-  onOpenChange, 
-  projectId, 
-  projectName, 
-  preSelectedHostingId 
+export function DeploymentDialog({
+  open,
+  onOpenChange,
+  projectId,
+  projectName,
+  preSelectedHostingId
 }: DeploymentDialogProps) {
   const [hostings, setHostings] = useState<HostingConnection[]>([]);
   const [selectedHosting, setSelectedHosting] = useState<HostingConnection | null>(null);
@@ -60,12 +61,45 @@ export function DeploymentDialog({
       }
     }
   }, [hostings, preSelectedHostingId]);
+  const fetchCurrentHostingForProject = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const response = await httpFile.post('/getCurrentHostingForProject', { projectId }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      return response.data.data.hostingId;
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+      return null;
+    }
+  };
+
 
   const fetchHostings = async () => {
     try {
       setIsLoading(true);
       const hostingList = await getMyHostings();
       setHostings(hostingList);
+
+      // Fetch the current hosting for the project
+      const currentHostingId = await fetchCurrentHostingForProject();
+      if (currentHostingId) {
+        const currentHosting = hostingList.find(h => h._id === currentHostingId);
+        if (currentHosting) {
+          setSelectedHosting(currentHosting);
+          setStep(2);
+          if (currentHosting.connectionType === 'ftp' || currentHosting.connectionType === 'ssh' || currentHosting.connectionType === 'vps') {
+            browseDirectories(currentHosting._id, '');
+          } else {
+            setRootPath('/public_html');
+          }
+        }
+      }
     } catch (error: any) {
       toast({
         title: "Error",
@@ -77,16 +111,36 @@ export function DeploymentDialog({
     }
   };
 
-  const handleHostingSelect = (hosting: HostingConnection) => {
-    setSelectedHosting(hosting);
-    setStep(2);
-    
-    if (hosting.connectionType === 'ftp' || hosting.connectionType === 'ssh' || hosting.connectionType === 'vps') {
-      browseDirectories(hosting._id, '');
-    } else {
-      setRootPath('/public_html');
-    }
-  };
+ const handleHostingSelect = async (hosting: HostingConnection) => {
+  setSelectedHosting(hosting);
+  setStep(2);
+  
+  // Set hosting for project before continuing to directory browsing
+  try {
+    await setCurrentHostingForProject({
+      projectId,
+      hostingId: hosting._id
+    });
+    toast({
+      title: "Success",
+      description: "Hosting linked to the project successfully.",
+    });
+  } catch (error: any) {
+    toast({
+      title: "Error",
+      description: error.message,
+      variant: "destructive",
+    });
+    return;
+  }
+  
+  if (hosting.connectionType === 'ftp' || hosting.connectionType === 'ssh' || hosting.connectionType === 'vps') {
+    browseDirectories(hosting._id, '');
+  } else {
+    setRootPath('/public_html');
+  }
+};
+
 
   const browseDirectories = async (hostingId: string, path: string) => {
     try {
@@ -94,7 +148,7 @@ export function DeploymentDialog({
       const dirs = await browseHostingDirectories(hostingId, path);
       setDirectories(dirs);
       setCurrentPath(path);
-      
+
       if (path === '') {
         setBreadcrumbs([]);
       } else {
@@ -131,25 +185,28 @@ export function DeploymentDialog({
   };
 
   const uploadToHostingFromBuild = async (projectDeploymentId: string) => {
-    try {
-      const response = await fetch('https://aiprojectapis.logicaldottech.com/admin/v1/uploadToHostingFromBuild', {
-        method: 'POST',
-        headers: {
-          'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2NzY1ODMwNWZjOGEzNTJlZjZkMGZiOGIiLCJkZXZpY2VUb2tlbiI6ImRldmljZVRva2VuIiwidG9rZW5WZXJzaW9uIjo5LCJpYXQiOjE3NTI0Nzk0MjIsImV4cCI6MTc1NTA3MTQyMn0.C4Bn8C4UUASEIVQcn-AoQhNxK4Xmn75uoP5EL-aLPIo'
-        },
-        body: (() => {
-          const formData = new FormData();
-          formData.append('projectDeploymentId', projectDeploymentId);
-          formData.append('projectId', projectId);
-          return formData;
-        })()
-      });
+    // grab token
+    const token = localStorage.getItem("token");
+    if (!token) throw new Error("No auth token found");
 
-      if (!response.ok) {
-        throw new Error('Failed to upload to hosting');
-      }
+    // build form data
+    const formData = new FormData();
+    formData.append("projectDeploymentId", projectDeploymentId);
+    formData.append("projectId", projectId);
+
+    try {
+      await httpFile.post(
+        "/uploadToHostingFromBuild",
+        formData,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to upload to hosting');
+      // bubble up a clear message
+      throw new Error(error.response?.data?.message || "Failed to upload to hosting");
     }
   };
 
@@ -221,17 +278,16 @@ export function DeploymentDialog({
       <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Deploy {projectName}</DialogTitle>
-          
+
           {/* Step indicator */}
           <div className="flex items-center justify-center space-x-4 py-4">
             {[1, 2, 3].map((stepNumber) => (
               <div key={stepNumber} className="flex items-center">
                 <div
-                  className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium cursor-pointer ${
-                    step >= stepNumber
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-200 text-gray-600'
-                  }`}
+                  className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium cursor-pointer ${step >= stepNumber
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-200 text-gray-600'
+                    }`}
                   onClick={() => goToStep(stepNumber as 1 | 2 | 3)}
                 >
                   {step > stepNumber ? <Check className="w-4 h-4" /> : stepNumber}
@@ -254,13 +310,12 @@ export function DeploymentDialog({
               <div className="space-y-2">
                 {hostings.map((hosting) => {
                   const config = JSON.parse(hosting.connectionConfig);
-                  const isSelected = preSelectedHostingId === hosting._id;
+                  const isSelected = selectedHosting?._id === hosting._id;
                   return (
                     <div
                       key={hosting._id}
-                      className={`p-4 border rounded-lg cursor-pointer transition-colors ${
-                        isSelected ? 'border-blue-500 bg-blue-50' : 'hover:bg-gray-50'
-                      }`}
+                      className={`p-4 border rounded-lg cursor-pointer transition-colors ${isSelected ? 'border-blue-500 bg-blue-50' : 'hover:bg-gray-50'
+                        }`}
                       onClick={() => handleHostingSelect(hosting)}
                     >
                       <div className="flex items-center justify-between">
@@ -278,6 +333,7 @@ export function DeploymentDialog({
                     </div>
                   );
                 })}
+
                 {hostings.length === 0 && (
                   <div className="text-center py-8 text-gray-500">
                     No hosting connections found. Please add a hosting connection first.
@@ -303,7 +359,7 @@ export function DeploymentDialog({
             {(selectedHosting.connectionType === 'ftp' || selectedHosting.connectionType === 'ssh' || selectedHosting.connectionType === 'vps') && (
               <div className="space-y-3">
                 <Label>Browse Directories</Label>
-                
+
                 {/* Breadcrumbs */}
                 <div className="flex items-center space-x-2 p-2 bg-gray-50 rounded">
                   <FolderOpen className="h-4 w-4" />
@@ -313,7 +369,7 @@ export function DeploymentDialog({
                   {breadcrumbs.map((crumb, index) => (
                     <div key={index} className="flex items-center space-x-2">
                       <ChevronRight className="h-3 w-3" />
-                      <span 
+                      <span
                         className="cursor-pointer hover:underline"
                         onClick={() => navigateToPath(index)}
                       >
@@ -384,8 +440,8 @@ export function DeploymentDialog({
             </div>
 
             <div className="flex gap-2 pt-4">
-              <Button 
-                onClick={handleDeploy} 
+              <Button
+                onClick={handleDeploy}
                 disabled={isLoading || !domainName || !rootPath}
                 className="flex-1"
               >
@@ -410,7 +466,7 @@ export function DeploymentDialog({
                 {isLoading ? "Deploying..." : "Congratulations!"}
               </h3>
               <p className="text-gray-600 mt-2">
-                {isLoading 
+                {isLoading
                   ? "Your project is being deployed. Please wait..."
                   : "Your project has been successfully deployed to your hosting server."
                 }
@@ -427,3 +483,4 @@ export function DeploymentDialog({
     </Dialog>
   );
 }
+
