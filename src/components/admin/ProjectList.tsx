@@ -18,6 +18,7 @@ import { httpFile } from "../../config.js";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import { DeploymentDialog } from "./DeploymentDialog";
+import io from "socket.io-client";
 
 export function ProjectList() {
   const [searchTerm, setSearchTerm] = useState("");
@@ -33,6 +34,8 @@ export function ProjectList() {
 
   // Fetch projects from API with pagination and search
 useEffect(() => {
+  const socket = io(import.meta.env.VITE_SOCKET_URL || "http://localhost:1111");
+
   const fetchProjects = async () => {
     try {
       const token = localStorage.getItem("token");
@@ -62,67 +65,66 @@ useEffect(() => {
       );
 
       if (res.status === 401) {
-        // Clear any stored credentials
         localStorage.clear();
-
-        // Let the user know their session has expired
         toast({
           title: "Session Expired",
           description: "Your session has expired. Please log in again.",
           variant: "destructive",
         });
-
-        // Redirect to login
         navigate("/login");
         return;
       }
 
-      if (res.status === 400) {
+      if (res.status === 400 || res.status === 404) {
         toast({
-          title: "Request Error",
-          description: res.data.message || "Invalid request",
+          title: "Error",
+          description: res.data.message || "Request failed",
           variant: "destructive",
         });
+        if (res.status === 404) navigate("/login");
         return;
       }
 
-      if (res.status === 404) {
-        toast({
-          title: "User Not Found",
-          description: res.data.message || "User not found",
-          variant: "destructive",
-        });
-        navigate("/login");
-        return;
-      }
-
-      setProjects(res.data.data || []);
+      const projectList = res.data.data || [];
+      setProjects(projectList);
       setActiveProjects(res.data.totalActiveProjects || []);
       setTotalPages(res.data.totalPages || 1);
       setTotalProjects(res.data.total || 0);
+
+      // Join unique socket room for each project
+      projectList.forEach((project) => {
+        socket.emit("joinRoom", `project_${project._id}`);
+      });
+
     } catch (err) {
-      if (err.response?.status === 401) {
-        // Handle thrown 401
-        localStorage.clear();
-        toast({
-          title: "Session Expired",
-          description: "Your session has expired. Please log in again.",
-          variant: "destructive",
-        });
-      } else {
-        toast({
-          title: "Error",
-          description: err.response?.data?.message || "Failed to fetch projects",
-          variant: "destructive",
-        });
-      }
+      localStorage.clear();
+      toast({
+        title: "Error",
+        description: err.response?.data?.message || "Failed to fetch projects",
+        variant: "destructive",
+      });
       navigate("/login");
     }
   };
 
   fetchProjects();
-}, [navigate, currentPage, limit, searchTerm, toast]);
 
+  // ✅ Continuous refresh every 5 seconds
+  const intervalId = setInterval(fetchProjects, 15000);
+
+  socket.on("projectStatusUpdate", ({ projectId, status }) => {
+    setProjects((prev) =>
+      prev.map((proj) =>
+        proj._id === projectId ? { ...proj, deploymentStatus: status } : proj
+      )
+    );
+  });
+
+  return () => {
+    clearInterval(intervalId);
+    socket.disconnect();
+  };
+}, [navigate, currentPage, limit, searchTerm, toast]);
 
   // Handle page change
   const handlePageChange = (pageNumber) => {
@@ -270,14 +272,16 @@ useEffect(() => {
                     <p className="text-xs text-gray-500">{project.serviceType}</p>
                   </div>
                 </div>
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
+                <Button
+                  variant="ghost"
+                  size="sm"
                   className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
                 >
                   <Trash className="h-4 w-4" />
                 </Button>
               </div>
+
+
 
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
@@ -286,6 +290,23 @@ useEffect(() => {
                     {project.status === 2 ? "Active" : "Inactive"}
                   </Badge>
                 </div>
+
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-gray-500">Deployment</span>
+                  <Badge
+                    className={`text-xs px-2 py-1 ${project.deploymentStatus === "success"
+                        ? "bg-green-100 text-green-700"
+                        : project.deploymentStatus === "building"
+                          ? "bg-yellow-100 text-yellow-700"
+                          : project.deploymentStatus === "upload_failed" || project.deploymentStatus === "build_failed"
+                            ? "bg-red-100 text-red-700"
+                            : "bg-gray-100 text-gray-600"
+                      }`}
+                  >
+                    {project.deploymentStatus?.replace(/_/g, " ") || "not deployed"}
+                  </Badge>
+                </div>
+
 
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-gray-500">Created</span>

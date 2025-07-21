@@ -8,6 +8,8 @@ import { FolderOpen, ChevronRight, ArrowLeft, Check, Loader2 } from "lucide-reac
 import { useToast } from "@/hooks/use-toast";
 import { getMyHostings, browseHostingDirectories, linkProjectToHosting, HostingConnection, setCurrentHostingForProject } from "@/api/newHostingApi";
 import { httpFile } from "@/config";
+import socket from "@/socket"; // adjust path if needed
+
 
 interface DeploymentDialogProps {
   open: boolean;
@@ -39,6 +41,9 @@ export function DeploymentDialog({
   const [isLoading, setIsLoading] = useState(false);
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const { toast } = useToast();
+  const [projectDeploymentId, setProjectDeploymentId] = useState<string | null>(null);
+  const [liveStatus, setLiveStatus] = useState<string>("Waiting for update...");
+
 
   useEffect(() => {
     if (open) {
@@ -61,6 +66,55 @@ export function DeploymentDialog({
       }
     }
   }, [hostings, preSelectedHostingId]);
+
+  useEffect(() => {
+    if (hostings.length > 0 && preSelectedHostingId) {
+      const preSelected = hostings.find(h => h._id === preSelectedHostingId);
+      if (preSelected) {
+        setSelectedHosting(preSelected);
+        setStep(2);
+        if (preSelected.connectionType === 'ftp' || preSelected.connectionType === 'ssh' || preSelected.connectionType === 'vps') {
+          browseDirectories(preSelected._id, '');
+        } else {
+          setRootPath('/public_html');
+        }
+
+        // NEW: Prefill config if exists
+        fetchProjectDeploymentConfig(projectId, preSelected._id).then(config => {
+          if (config) {
+            setDomainName(config.domainName || "");
+            setRootPath(config.rootPath || "");
+            setProjectDeploymentId(config.projectDeploymentId || null);
+          } else {
+            setDomainName("");
+            setRootPath("");
+            setProjectDeploymentId(null);
+          }
+        });
+      }
+    }
+  }, [hostings, preSelectedHostingId]);
+
+  useEffect(() => {
+    if (step === 3) {
+      socket.emit("joinProject", projectId); // Join project room
+
+      socket.on("projectStatusUpdate", ({ projectId: updatedId, status }) => {
+        if (updatedId === projectId) {
+          setLiveStatus(status);
+        }
+      });
+
+      return () => {
+        socket.emit("leaveProject", projectId); // Leave project room
+        socket.off("projectStatusUpdate");
+      };
+    }
+  }, [step, projectId]);
+
+
+
+
   const fetchCurrentHostingForProject = async () => {
     try {
       const token = localStorage.getItem("token");
@@ -111,35 +165,46 @@ export function DeploymentDialog({
     }
   };
 
- const handleHostingSelect = async (hosting: HostingConnection) => {
-  setSelectedHosting(hosting);
-  setStep(2);
-  
-  // Set hosting for project before continuing to directory browsing
-  try {
-    await setCurrentHostingForProject({
-      projectId,
-      hostingId: hosting._id
-    });
-    toast({
-      title: "Success",
-      description: "Hosting linked to the project successfully.",
-    });
-  } catch (error: any) {
-    toast({
-      title: "Error",
-      description: error.message,
-      variant: "destructive",
-    });
-    return;
-  }
-  
-  if (hosting.connectionType === 'ftp' || hosting.connectionType === 'ssh' || hosting.connectionType === 'vps') {
-    browseDirectories(hosting._id, '');
-  } else {
-    setRootPath('/public_html');
-  }
-};
+  const handleHostingSelect = async (hosting: HostingConnection) => {
+    setSelectedHosting(hosting);
+    setStep(2);
+
+    // Prefill values from existing deployment if present
+    const config = await fetchProjectDeploymentConfig(projectId, hosting._id);
+    if (config) {
+      setDomainName(config.domainName || "");
+      setRootPath(config.rootPath || "");
+      setProjectDeploymentId(config.projectDeploymentId || null);
+    } else {
+      setDomainName("");
+      setRootPath("");
+      setProjectDeploymentId(null);
+    }
+
+    try {
+      await setCurrentHostingForProject({
+        projectId,
+        hostingId: hosting._id
+      });
+      toast({
+        title: "Success",
+        description: "Hosting linked to the project successfully.",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (hosting.connectionType === 'ftp' || hosting.connectionType === 'ssh' || hosting.connectionType === 'vps') {
+      browseDirectories(hosting._id, '');
+    } else {
+      setRootPath('/public_html');
+    }
+  };
 
 
   const browseDirectories = async (hostingId: string, path: string) => {
@@ -184,6 +249,21 @@ export function DeploymentDialog({
     setRootPath(currentPath || '/');
   };
 
+  const fetchProjectDeploymentConfig = async (projectId: string, hostingId: string) => {
+    try {
+      const token = localStorage.getItem("token");
+      const response = await httpFile.post(
+        "/getProjectDeploymentId",
+        { projectId, hostingId },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      return response.data.data; // { projectDeploymentId, domainName, rootPath, ... }
+    } catch (error: any) {
+      // ignore error if not found, just return null
+      return null;
+    }
+  };
+
   const uploadToHostingFromBuild = async (projectDeploymentId: string) => {
     // grab token
     const token = localStorage.getItem("token");
@@ -224,24 +304,33 @@ export function DeploymentDialog({
       setIsLoading(true);
       setStep(3);
 
-      await linkProjectToHosting({
-        hostingId: selectedHosting._id,
-        projectId,
-        domainName,
-        rootPath,
-      });
+      // Try to fetch the deployment id first
+      let deploymentId = projectDeploymentId;
+      if (!deploymentId) {
+        // If not already set, link project and get id from response
+        const response = await linkProjectToHosting({
+          hostingId: selectedHosting._id,
+          projectId,
+          domainName,
+          rootPath,
+        });
 
-      // Automatically trigger upload
-      await uploadToHostingFromBuild("68777f41481d1f3d166aff23");
+        // Assume your linkProjectToHosting returns the deployment (you may need to check your implementation)
+        deploymentId = response?.data?._id;
+      }
 
-      toast({
-        title: "Success",
-        description: "Project deployed successfully",
-      });
+      if (!deploymentId) {
+        // If still no id, fetch from API again
+        const config = await fetchProjectDeploymentConfig(projectId, selectedHosting._id);
+        deploymentId = config?.projectDeploymentId;
+      }
 
-      setTimeout(() => {
-        onOpenChange(false);
-      }, 3000);
+      if (!deploymentId) throw new Error("Could not determine ProjectDeploymentId!");
+
+      await uploadToHostingFromBuild(deploymentId);
+
+    
+
     } catch (error: any) {
       toast({
         title: "Deployment Error",
@@ -253,6 +342,7 @@ export function DeploymentDialog({
       setIsLoading(false);
     }
   };
+
 
   const resetDialog = () => {
     setStep(1);
@@ -454,31 +544,50 @@ export function DeploymentDialog({
         {/* Step 3: Success */}
         {step === 3 && (
           <div className="text-center py-8 space-y-4">
-            <div className="w-16 h-16 mx-auto bg-green-100 rounded-full flex items-center justify-center">
-              {isLoading ? (
-                <Loader2 className="w-8 h-8 text-green-600 animate-spin" />
-              ) : (
+            <div className={`w-16 h-16 mx-auto rounded-full flex items-center justify-center ${liveStatus === 'success' ? 'bg-green-100' : 'bg-blue-100'
+              }`}>
+              {liveStatus === 'success' ? (
                 <Check className="w-8 h-8 text-green-600" />
+              ) : (
+                <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
               )}
             </div>
+
+
             <div>
               <h3 className="text-xl font-semibold text-gray-900">
-                {isLoading ? "Deploying..." : "Congratulations!"}
+                {liveStatus === "building" && "Building Project"}
+                {liveStatus === "uploading" && "Uploading to Server"}
+                {liveStatus === "success" && "✅ Deployment Completed"}
+                {liveStatus === "build_failed" && "❌ Build Failed"}
+                {liveStatus === "upload_failed" && "❌ Upload Failed"}
+                {liveStatus === "Waiting for update..." && "Deployment Started"}
+                {!["building", "uploading", "success", "build_failed", "upload_failed", "Waiting for update..."].includes(liveStatus) && "Deploying..."}
               </h3>
+
               <p className="text-gray-600 mt-2">
-                {isLoading
-                  ? "Your project is being deployed. Please wait..."
-                  : "Your project has been successfully deployed to your hosting server."
-                }
+                {liveStatus === "building" && "Your project is currently being built. Please wait..."}
+                {liveStatus === "uploading" && "Build complete. Uploading to your hosting server..."}
+                {liveStatus === "success" && "Congratulations! Your project was deployed successfully."}
+                {liveStatus === "build_failed" && "Build process failed. Please check logs or try again."}
+                {liveStatus === "upload_failed" && "Uploading to the server failed. Please verify connection."}
+                {liveStatus === "Waiting for update..." && "Your deployment process has started. Waiting for build to begin..."}
+                {!["building", "uploading", "success", "build_failed", "upload_failed", "Waiting for update..."].includes(liveStatus) &&
+                  "Your deployment is in progress. Please wait..."}
               </p>
+
             </div>
-            {!isLoading && (
-              <Button onClick={() => onOpenChange(false)}>
-                Close
-              </Button>
-            )}
+
+            <div className="text-sm text-gray-700 bg-gray-50 border rounded p-3 w-full max-w-md mx-auto">
+              <span className="font-medium">Live Status:</span> {liveStatus}
+            </div>
+
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Close
+            </Button>
           </div>
         )}
+
       </DialogContent>
     </Dialog>
   );

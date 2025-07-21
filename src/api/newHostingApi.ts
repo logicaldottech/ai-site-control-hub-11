@@ -85,7 +85,7 @@ export const browseHostingDirectories = async (hostingId: string, path = ''): Pr
 };
 
 // Link project to hosting
-export const linkProjectToHosting = async (request: LinkProjectRequest): Promise<void> => {
+export const linkProjectToHosting = async (request: LinkProjectRequest): Promise<any> => {
   try {
     const token = localStorage.getItem("token");
     const formData = new FormData();
@@ -94,14 +94,16 @@ export const linkProjectToHosting = async (request: LinkProjectRequest): Promise
     formData.append('domainName', request.domainName);
     formData.append('rootPath', request.rootPath);
 
-    await httpFile.post('linkProjectToHosting', formData, {
+    const response = await httpFile.post('linkProjectToHosting', formData, {
       headers: { Authorization: `Bearer ${token}` }
     });
+    return response;
   } catch (error: any) {
-    console.error('Failed to link project to hosting:', error);
+    // ...
     throw new Error(error.response?.data?.message || 'Failed to link project to hosting');
   }
 };
+
 
 // Set current hosting for project
 export const setCurrentHostingForProject = async (request: { projectId: string, hostingId: string }): Promise<void> => {

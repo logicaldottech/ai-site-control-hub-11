@@ -68,6 +68,7 @@
     "react-snap": "^1.23.0",
     "react-toastify": "^11.0.5",
     "recharts": "^2.12.7",
+    "socket.io-client": "^4.8.1",
     "sonner": "^1.5.0",
     "ssr": "^6.2.82",
     "sweetalert2": "^11.22.2",
