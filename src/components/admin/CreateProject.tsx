@@ -63,6 +63,12 @@ export function CreateProject({ setActiveSection }: CreateProjectProps) {
 
 
 
+  // Theme states
+  const [selectedTheme, setSelectedTheme] = useState<string>("");
+  const [themeSecondaryColor, setThemeSecondaryColor] = useState<string>("#000000");
+  const [lastSavedSelectedTheme, setLastSavedSelectedTheme] = useState<string>("");
+  const [lastSavedThemeSecondaryColor, setLastSavedThemeSecondaryColor] = useState<string>("");
+
   // Color states
   const [primaryColor, setPrimaryColor] = useState<string>("#000000"); // Default solid color
   const [secondaryColor, setSecondaryColor] = useState<string>("#000000");
@@ -3083,6 +3089,447 @@ export function CreateProject({ setActiveSection }: CreateProjectProps) {
             </div>
           </div>
         );
+      case 9:
+        const staticThemes = [
+          {
+            id: "modern-business",
+            name: "Modern Business",
+            preview: "https://via.placeholder.com/300x200/3B82F6/FFFFFF?text=Modern+Business",
+            demoUrl: "https://example.com/modern-business-demo",
+            supportsSecondaryColor: true,
+            defaultSecondaryColor: "#EF4444"
+          },
+          {
+            id: "creative-portfolio",
+            name: "Creative Portfolio",
+            preview: "https://via.placeholder.com/300x200/8B5CF6/FFFFFF?text=Creative+Portfolio",
+            demoUrl: "https://example.com/creative-portfolio-demo",
+            supportsSecondaryColor: false
+          },
+          {
+            id: "e-commerce",
+            name: "E-Commerce",
+            preview: "https://via.placeholder.com/300x200/10B981/FFFFFF?text=E-Commerce",
+            demoUrl: "https://example.com/e-commerce-demo",
+            supportsSecondaryColor: true,
+            defaultSecondaryColor: "#F59E0B"
+          },
+          {
+            id: "restaurant",
+            name: "Restaurant",
+            preview: "https://via.placeholder.com/300x200/DC2626/FFFFFF?text=Restaurant",
+            demoUrl: "https://example.com/restaurant-demo",
+            supportsSecondaryColor: true,
+            defaultSecondaryColor: "#059669"
+          },
+          {
+            id: "tech-startup",
+            name: "Tech Startup",
+            preview: "https://via.placeholder.com/300x200/1F2937/FFFFFF?text=Tech+Startup",
+            demoUrl: "https://example.com/tech-startup-demo",
+            supportsSecondaryColor: false
+          },
+          {
+            id: "healthcare",
+            name: "Healthcare",
+            preview: "https://via.placeholder.com/300x200/06B6D4/FFFFFF?text=Healthcare",
+            demoUrl: "https://example.com/healthcare-demo",
+            supportsSecondaryColor: true,
+            defaultSecondaryColor: "#84CC16"
+          },
+          {
+            id: "fitness",
+            name: "Fitness",
+            preview: "https://via.placeholder.com/300x200/F97316/FFFFFF?text=Fitness",
+            demoUrl: "https://example.com/fitness-demo",
+            supportsSecondaryColor: true,
+            defaultSecondaryColor: "#EC4899"
+          },
+          {
+            id: "education",
+            name: "Education",
+            preview: "https://via.placeholder.com/300x200/7C3AED/FFFFFF?text=Education",
+            demoUrl: "https://example.com/education-demo",
+            supportsSecondaryColor: false
+          }
+        ];
+
+        const handleThemeSelect = (themeId: string) => {
+          setSelectedTheme(themeId);
+          const theme = staticThemes.find(t => t.id === themeId);
+          if (theme?.supportsSecondaryColor && theme.defaultSecondaryColor) {
+            setThemeSecondaryColor(theme.defaultSecondaryColor);
+          }
+        };
+
+        const selectedThemeData = staticThemes.find(t => t.id === selectedTheme);
+
+        return (
+          <div className="space-y-6">
+            <div className="space-y-4">
+              <h3 className="text-lg font-medium">Choose Your Theme</h3>
+              <p className="text-sm text-gray-600">
+                Select a theme that best represents your brand. You can preview each theme before making your choice.
+              </p>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {staticThemes.map((theme) => (
+                  <div
+                    key={theme.id}
+                    className={`border rounded-lg overflow-hidden cursor-pointer transition-all hover:shadow-lg ${
+                      selectedTheme === theme.id ? 'ring-2 ring-blue-500 bg-blue-50' : 'hover:border-gray-300'
+                    }`}
+                    onClick={() => handleThemeSelect(theme.id)}
+                  >
+                    <div className="relative">
+                      <img
+                        src={theme.preview}
+                        alt={theme.name}
+                        className="w-full h-32 object-cover"
+                      />
+                      <div className="absolute top-2 left-2">
+                        <Checkbox
+                          checked={selectedTheme === theme.id}
+                          onChange={() => handleThemeSelect(theme.id)}
+                          className="bg-white"
+                        />
+                      </div>
+                    </div>
+                    <div className="p-3 space-y-2">
+                      <h4 className="font-medium text-sm">{theme.name}</h4>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full text-xs"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          window.open(theme.demoUrl, '_blank');
+                        }}
+                      >
+                        Visit Demo
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {selectedThemeData?.supportsSecondaryColor && (
+                <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+                  <h4 className="text-md font-medium mb-3">Customize Theme Colors</h4>
+                  <div className="space-y-3">
+                    <div className="flex items-center space-x-4">
+                      <Label htmlFor="themeSecondaryColor" className="text-sm min-w-0">
+                        Secondary Color:
+                      </Label>
+                      <Input
+                        type="color"
+                        id="themeSecondaryColor"
+                        value={themeSecondaryColor}
+                        onChange={(e) => setThemeSecondaryColor(e.target.value)}
+                        className="w-16 h-8"
+                      />
+                      <span className="text-xs text-gray-500 uppercase">{themeSecondaryColor}</span>
+                    </div>
+                    <p className="text-xs text-gray-600">
+                      This color will be used for accents, highlights, and secondary elements in your theme.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      case 10:
+        return (
+          <div className="space-y-6">
+            <div className="space-y-4">
+              <h3 className="text-lg font-medium">Color Customization</h3>
+              <p className="text-sm text-gray-600">
+                Fine-tune your brand colors. These colors will be applied throughout your website.
+              </p>
+              
+              {/* Primary Color */}
+              <div className="space-y-2">
+                <div className="flex items-center space-x-2">
+                  <Label htmlFor="primaryColor">Primary Color</Label>
+                  <span className="text-xs text-gray-500">Main brand color - used for headers, navigation, and primary buttons</span>
+                </div>
+                <div className="flex items-center space-x-4">
+                  <Checkbox
+                    id="primaryGradientToggle"
+                    checked={isPrimaryGradient}
+                    onCheckedChange={() => setIsPrimaryGradient(!isPrimaryGradient)}
+                  />
+                  <label
+                    htmlFor="primaryGradientToggle"
+                    className="text-sm font-medium leading-none"
+                  >
+                    Use Gradient
+                  </label>
+                </div>
+                {isPrimaryGradient ? (
+                  <div className="space-y-2">
+                    <div className="flex space-x-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="primaryGradientColor1">Gradient Color 1</Label>
+                        <Input
+                          type="color"
+                          id="primaryGradientColor1"
+                          value={primaryGradient.color1}
+                          onChange={(e) => setPrimaryGradient({ ...primaryGradient, color1: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="primaryGradientColor2">Gradient Color 2</Label>
+                        <Input
+                          type="color"
+                          id="primaryGradientColor2"
+                          value={primaryGradient.color2}
+                          onChange={(e) => setPrimaryGradient({ ...primaryGradient, color2: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="primaryGradientDirection">Gradient Direction</Label>
+                      <select
+                        id="primaryGradientDirection"
+                        value={primaryGradient.direction}
+                        onChange={(e) => setPrimaryGradient({ ...primaryGradient, direction: e.target.value })}
+                        className="w-full p-2 border rounded"
+                      >
+                        <option value="to right">To Right</option>
+                        <option value="to left">To Left</option>
+                        <option value="to bottom">To Bottom</option>
+                        <option value="to top">To Top</option>
+                      </select>
+                    </div>
+                    <div
+                      className="h-10 w-full rounded"
+                      style={{ background: `linear-gradient(${primaryGradient.direction}, ${primaryGradient.color1}, ${primaryGradient.color2})` }}
+                    ></div>
+                  </div>
+                ) : (
+                  <Input
+                    type="color"
+                    id="primaryColor"
+                    value={primaryColor}
+                    onChange={(e) => setPrimaryColor(e.target.value)}
+                  />
+                )}
+              </div>
+
+              {/* Secondary Color */}
+              <div className="space-y-2">
+                <div className="flex items-center space-x-2">
+                  <Label htmlFor="secondaryColor">Secondary Color</Label>
+                  <span className="text-xs text-gray-500">Secondary brand color - used for secondary buttons and accents</span>
+                </div>
+                <div className="flex items-center space-x-4">
+                  <Checkbox
+                    id="secondaryGradientToggle"
+                    checked={isSecondaryGradient}
+                    onCheckedChange={() => setIsSecondaryGradient(!isSecondaryGradient)}
+                  />
+                  <label
+                    htmlFor="secondaryGradientToggle"
+                    className="text-sm font-medium leading-none"
+                  >
+                    Use Gradient
+                  </label>
+                </div>
+                {isSecondaryGradient ? (
+                  <div className="space-y-2">
+                    <div className="flex space-x-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="secondaryGradientColor1">Gradient Color 1</Label>
+                        <Input
+                          type="color"
+                          id="secondaryGradientColor1"
+                          value={secondaryGradient.color1}
+                          onChange={(e) => setSecondaryGradient({ ...secondaryGradient, color1: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="secondaryGradientColor2">Gradient Color 2</Label>
+                        <Input
+                          type="color"
+                          id="secondaryGradientColor2"
+                          value={secondaryGradient.color2}
+                          onChange={(e) => setSecondaryGradient({ ...secondaryGradient, color2: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="secondaryGradientDirection">Gradient Direction</Label>
+                      <select
+                        id="secondaryGradientDirection"
+                        value={secondaryGradient.direction}
+                        onChange={(e) => setSecondaryGradient({ ...secondaryGradient, direction: e.target.value })}
+                        className="w-full p-2 border rounded"
+                      >
+                        <option value="to right">To Right</option>
+                        <option value="to left">To Left</option>
+                        <option value="to bottom">To Bottom</option>
+                        <option value="to top">To Top</option>
+                      </select>
+                    </div>
+                    <div
+                      className="h-10 w-full rounded"
+                      style={{ background: `linear-gradient(${secondaryGradient.direction}, ${secondaryGradient.color1}, ${secondaryGradient.color2})` }}
+                    ></div>
+                  </div>
+                ) : (
+                  <Input
+                    type="color"
+                    id="secondaryColor"
+                    value={secondaryColor}
+                    onChange={(e) => setSecondaryColor(e.target.value)}
+                  />
+                )}
+              </div>
+
+              {/* Accent Color */}
+              <div className="space-y-2">
+                <div className="flex items-center space-x-2">
+                  <Label htmlFor="accentColor">Accent Color</Label>
+                  <span className="text-xs text-gray-500">Accent color - used for highlights and special elements</span>
+                </div>
+                <div className="flex items-center space-x-4">
+                  <Checkbox
+                    id="accentGradientToggle"
+                    checked={isAccentGradient}
+                    onCheckedChange={() => setIsAccentGradient(!isAccentGradient)}
+                  />
+                  <label
+                    htmlFor="accentGradientToggle"
+                    className="text-sm font-medium leading-none"
+                  >
+                    Use Gradient
+                  </label>
+                </div>
+                {isAccentGradient ? (
+                  <div className="space-y-2">
+                    <div className="flex space-x-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="accentGradientColor1">Gradient Color 1</Label>
+                        <Input
+                          type="color"
+                          id="accentGradientColor1"
+                          value={accentGradient.color1}
+                          onChange={(e) => setAccentGradient({ ...accentGradient, color1: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="accentGradientColor2">Gradient Color 2</Label>
+                        <Input
+                          type="color"
+                          id="accentGradientColor2"
+                          value={accentGradient.color2}
+                          onChange={(e) => setAccentGradient({ ...accentGradient, color2: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="accentGradientDirection">Gradient Direction</Label>
+                      <select
+                        id="accentGradientDirection"
+                        value={accentGradient.direction}
+                        onChange={(e) => setAccentGradient({ ...accentGradient, direction: e.target.value })}
+                        className="w-full p-2 border rounded"
+                      >
+                        <option value="to right">To Right</option>
+                        <option value="to left">To Left</option>
+                        <option value="to bottom">To Bottom</option>
+                        <option value="to top">To Top</option>
+                      </select>
+                    </div>
+                    <div
+                      className="h-10 w-full rounded"
+                      style={{ background: `linear-gradient(${accentGradient.direction}, ${accentGradient.color1}, ${accentGradient.color2})` }}
+                    ></div>
+                  </div>
+                ) : (
+                  <Input
+                    type="color"
+                    id="accentColor"
+                    value={accentColor}
+                    onChange={(e) => setAccentColor(e.target.value)}
+                  />
+                )}
+              </div>
+
+              {/* Button Color */}
+              <div className="space-y-2">
+                <div className="flex items-center space-x-2">
+                  <Label htmlFor="buttonColor">Button Color</Label>
+                  <span className="text-xs text-gray-500">Color for buttons across the project</span>
+                </div>
+                <div className="flex items-center space-x-4">
+                  <Checkbox
+                    id="buttonGradientToggle"
+                    checked={isButtonGradient}
+                    onCheckedChange={() => setIsButtonGradient(!isButtonGradient)}
+                  />
+                  <label
+                    htmlFor="buttonGradientToggle"
+                    className="text-sm font-medium leading-none"
+                  >
+                    Use Gradient
+                  </label>
+                </div>
+                {isButtonGradient ? (
+                  <div className="space-y-2">
+                    <div className="flex space-x-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="buttonGradientColor1">Gradient Color 1</Label>
+                        <Input
+                          type="color"
+                          id="buttonGradientColor1"
+                          value={buttonGradient.color1}
+                          onChange={(e) => setButtonGradient({ ...buttonGradient, color1: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="buttonGradientColor2">Gradient Color 1</Label>
+                        <Input
+                          type="color"
+                          id="buttonGradientColor2"
+                          value={buttonGradient.color2}
+                          onChange={(e) => setButtonGradient({ ...buttonGradient, color2: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="buttonGradientDirection">Gradient Direction</Label>
+                      <select
+                        id="buttonGradientDirection"
+                        value={buttonGradient.direction}
+                        onChange={(e) => setButtonGradient({ ...buttonGradient, direction: e.target.value })}
+                        className="w-full p-2 border rounded"
+                      >
+                        <option value="to right">To Right</option>
+                        <option value="to left">To Left</option>
+                        <option value="to bottom">To Bottom</option>
+                        <option value="to top">To Top</option>
+                      </select>
+                    </div>
+                    <div
+                      className="h-10 w-full rounded"
+                      style={{ background: `linear-gradient(${buttonGradient.direction}, ${buttonGradient.color1}, ${buttonGradient.color2})` }}
+                    ></div>
+                  </div>
+                ) : (
+                  <Input
+                    type="color"
+                    id="buttonColor"
+                    value={buttonColor}
+                    onChange={(e) => setButtonColor(e.target.value)}
+                  />
+                )}
+              </div>
+            </div>
+          </div>
+        );
       default:
         return null;
     }
@@ -3098,7 +3545,8 @@ export function CreateProject({ setActiveSection }: CreateProjectProps) {
       case 6: return "Preview";
       case 7: return serviceOption === "manual" ? "Manual Service Entry" : "AI Service Generation";
       case 8: return "About Us Details";
-      case 9: return "Brand Colors";
+      case 9: return "Theme Selection";
+      case 10: return "Brand Colors";
       default: return "Project Creation";
     }
   };
@@ -3112,25 +3560,25 @@ export function CreateProject({ setActiveSection }: CreateProjectProps) {
       {!showFinalSuccess ? (
         <>
           <div className="flex justify-between mb-6">
-            <div className="flex items-center space-x-2">
-              {Array.from({ length: 9 }, (_, i) => i + 1).map(i => (
+            <div className="flex items-center space-x-1 overflow-x-auto pb-2">
+              {Array.from({ length: 10 }, (_, i) => i + 1).map(i => (
                 <div
                   key={i}
-                  className={`flex items-center ${i > 1 && "ml-2"}`}
+                  className={`flex items-center flex-shrink-0 ${i > 1 && "ml-1"}`}
                 >
                   <div
-                    className={`h-8 w-8 rounded-full flex items-center justify-center text-sm font-medium
+                    className={`h-6 w-6 sm:h-8 sm:w-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-medium
             ${step === i
                         ? "bg-blue-600 text-white"
                         : step > i
                           ? "bg-green-500 text-white"
                           : "bg-gray-200 text-gray-500"}`}
                   >
-                    {step > i ? <Check className="h-4 w-4" /> : i}
+                    {step > i ? <Check className="h-3 w-3 sm:h-4 sm:w-4" /> : i}
                   </div>
-                  {i < 9 && (
+                  {i < 10 && (
                     <div
-                      className={`h-1 w-6 ${step > i ? "bg-green-500" : "bg-gray-200"}`}
+                      className={`h-1 w-3 sm:w-6 ${step > i ? "bg-green-500" : "bg-gray-200"}`}
                     ></div>
                   )}
                 </div>
@@ -3164,7 +3612,8 @@ export function CreateProject({ setActiveSection }: CreateProjectProps) {
                 {step === 7 && serviceOption === "manual" && "Enter service names manually or upload a spreadsheet."}
                 {step === 7 && serviceOption === "ai" && "Let our AI generate service suggestions for you."}
                 {step === 8 && "Enter contact and location information for your business."}
-                {step === 9 && "Choose best color which perfectly suits with your business."}
+                {step === 9 && "Choose a theme that best represents your brand and business."}
+                {step === 10 && "Choose best color which perfectly suits with your business."}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -3197,7 +3646,7 @@ export function CreateProject({ setActiveSection }: CreateProjectProps) {
                   onClick={handleNextStep}
                   disabled={loading || submitting}
                 >
-                  {step < 8 ? (
+                  {step < 9 ? (
                     <>
                       {submitting ? "Submitting..." : "Next"}
                       <ChevronRight className="ml-2 h-4 w-4" />
