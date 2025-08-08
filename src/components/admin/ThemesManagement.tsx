@@ -28,12 +28,15 @@ export function ThemesManagement() {
   const loadThemes = async () => {
     try {
       setLoading(true);
+      console.log('Loading themes...');
       const themeData = await themeApi.listThemes();
+      console.log('Themes loaded successfully:', themeData);
       setThemes(themeData);
-    } catch (error) {
+    } catch (error: any) {
+      console.error('Error loading themes:', error);
       toast({
         title: "Error",
-        description: "Failed to load themes",
+        description: error?.response?.data?.message || error?.message || "Failed to load themes",
         variant: "destructive"
       });
     } finally {
@@ -43,16 +46,18 @@ export function ThemesManagement() {
 
   const handleToggleStatus = async (themeId: string, currentStatus: boolean) => {
     try {
+      console.log('Toggling theme status:', { themeId, currentStatus });
       await themeApi.changeThemeStatus(themeId, !currentStatus);
       toast({
         title: "Success",
         description: `Theme ${!currentStatus ? 'activated' : 'deactivated'} successfully`
       });
       loadThemes();
-    } catch (error) {
+    } catch (error: any) {
+      console.error('Error toggling theme status:', error);
       toast({
         title: "Error",
-        description: "Failed to update theme status",
+        description: error?.response?.data?.message || error?.message || "Failed to update theme status",
         variant: "destructive"
       });
     }
