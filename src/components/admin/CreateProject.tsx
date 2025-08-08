@@ -70,6 +70,9 @@ export function CreateProject({ setActiveSection }: CreateProjectProps) {
   const [lastSavedThemeSecondaryColor, setLastSavedThemeSecondaryColor] = useState<string>("");
 
   // Color states
+  // at the top of CreateProject
+  const [subcolor, setSubcolor] = useState<string>("");
+
   const [primaryColor, setPrimaryColor] = useState<string>("#000000"); // Default solid color
   const [secondaryColor, setSecondaryColor] = useState<string>("#000000");
   const [accentColor, setAccentColor] = useState<string>("#000000");
@@ -1385,6 +1388,7 @@ export function CreateProject({ setActiveSection }: CreateProjectProps) {
           projectId,
           theme: selectedTheme,
           themeSecondaryColor: themeSecondaryColor,
+          themeSubColor: subcolor,
         };
 
         const res = await httpFile.post(
@@ -1398,6 +1402,20 @@ export function CreateProject({ setActiveSection }: CreateProjectProps) {
             title: "Success",
             description: "Theme saved successfully!",
           });
+
+          await httpFile.post(
+          "/makeEachLocaionPage",
+          payload,
+          { headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } }
+        );
+
+        await httpFile.post(
+          "/makeEachLocationServicePage",
+          payload,
+          { headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } }
+        );
+
+
           setLastSavedSelectedTheme(selectedTheme);
           setLastSavedThemeSecondaryColor(themeSecondaryColor);
           resetForm();
@@ -2769,294 +2787,7 @@ export function CreateProject({ setActiveSection }: CreateProjectProps) {
           </div>
         );
 
-      case 9:
-        return (
-          <div className="space-y-6">
-            <h3 className="text-lg font-medium">Select Brand Colors</h3>
-            <p className="text-gray-500">Choose the primary brand colors for your project, including options for solid colors or gradients.</p>
-            <div className="space-y-6">
-              {/* Primary Color */}
-              <div className="space-y-2">
-                <div className="flex items-center space-x-2">
-                  <Label htmlFor="primaryColor">Primary Color</Label>
-                  <span className="text-xs text-gray-500">Main brand color - used for primary buttons and links</span>
-                </div>
-                <div className="flex items-center space-x-4">
-                  <Checkbox
-                    id="primaryGradientToggle"
-                    checked={isPrimaryGradient}
-                    onCheckedChange={() => setIsPrimaryGradient(!isPrimaryGradient)}
-                  />
-                  <label
-                    htmlFor="primaryGradientToggle"
-                    className="text-sm font-medium leading-none"
-                  >
-                    Use Gradient
-                  </label>
-                </div>
-                {isPrimaryGradient ? (
-                  <div className="space-y-2">
-                    <div className="flex space-x-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="primaryGradientColor1">Gradient Color 1</Label>
-                        <Input
-                          type="color"
-                          id="primaryGradientColor1"
-                          value={primaryGradient.color1}
-                          onChange={(e) => setPrimaryGradient({ ...primaryGradient, color1: e.target.value })}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="primaryGradientColor2">Gradient Color 2</Label>
-                        <Input
-                          type="color"
-                          id="primaryGradientColor2"
-                          value={primaryGradient.color2}
-                          onChange={(e) => setPrimaryGradient({ ...primaryGradient, color2: e.target.value })}
-                        />
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="primaryGradientDirection">Gradient Direction</Label>
-                      <select
-                        id="primaryGradientDirection"
-                        value={primaryGradient.direction}
-                        onChange={(e) => setPrimaryGradient({ ...primaryGradient, direction: e.target.value })}
-                        className="w-full p-2 border rounded"
-                      >
-                        <option value="to right">To Right</option>
-                        <option value="to left">To Left</option>
-                        <option value="to bottom">To Bottom</option>
-                        <option value="to top">To Top</option>
-                      </select>
-                    </div>
-                    <div
-                      className="h-10 w-full rounded"
-                      style={{ background: `linear-gradient(${primaryGradient.direction}, ${primaryGradient.color1}, ${primaryGradient.color2})` }}
-                    ></div>
-                  </div>
-                ) : (
-                  <Input
-                    type="color"
-                    id="primaryColor"
-                    value={primaryColor}
-                    onChange={(e) => setPrimaryColor(e.target.value)}
-                  />
-                )}
-              </div>
 
-              {/* Secondary Color */}
-              <div className="space-y-2">
-                <div className="flex items-center space-x-2">
-                  <Label htmlFor="secondaryColor">Secondary Color</Label>
-                  <span className="text-xs text-gray-500">Secondary brand color - used for secondary elements</span>
-                </div>
-                <div className="flex items-center space-x-4">
-                  <Checkbox
-                    id="secondaryGradientToggle"
-                    checked={isSecondaryGradient}
-                    onCheckedChange={() => setIsSecondaryGradient(!isSecondaryGradient)}
-                  />
-                  <label
-                    htmlFor="secondaryGradientToggle"
-                    className="text-sm font-medium leading-none"
-                  >
-                    Use Gradient
-                  </label>
-                </div>
-                {isSecondaryGradient ? (
-                  <div className="space-y-2">
-                    <div className="flex space-x-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="secondaryGradientColor1">Gradient Color 1</Label>
-                        <Input
-                          type="color"
-                          id="secondaryGradientColor1"
-                          value={secondaryGradient.color1}
-                          onChange={(e) => setSecondaryGradient({ ...secondaryGradient, color1: e.target.value })}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="secondaryGradientColor2">Gradient Color 2</Label>
-                        <Input
-                          type="color"
-                          id="secondaryGradientColor2"
-                          value={secondaryGradient.color2}
-                          onChange={(e) => setSecondaryGradient({ ...secondaryGradient, color2: e.target.value })}
-                        />
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="secondaryGradientDirection">Gradient Direction</Label>
-                      <select
-                        id="secondaryGradientDirection"
-                        value={secondaryGradient.direction}
-                        onChange={(e) => setSecondaryGradient({ ...secondaryGradient, direction: e.target.value })}
-                        className="w-full p-2 border rounded"
-                      >
-                        <option value="to right">To Right</option>
-                        <option value="to left">To Left</option>
-                        <option value="to bottom">To Bottom</option>
-                        <option value="to top">To Top</option>
-                      </select>
-                    </div>
-                    <div
-                      className="h-10 w-full rounded"
-                      style={{ background: `linear-gradient(${secondaryGradient.direction}, ${secondaryGradient.color1}, ${secondaryGradient.color2})` }}
-                    ></div>
-                  </div>
-                ) : (
-                  <Input
-                    type="color"
-                    id="secondaryColor"
-                    value={secondaryColor}
-                    onChange={(e) => setSecondaryColor(e.target.value)}
-                  />
-                )}
-              </div>
-
-              {/* Accent Color */}
-              <div className="space-y-2">
-                <div className="flex items-center space-x-2">
-                  <Label htmlFor="accentColor">Accent Color</Label>
-                  <span className="text-xs text-gray-500">Accent color - used for highlights and special elements</span>
-                </div>
-                <div className="flex items-center space-x-4">
-                  <Checkbox
-                    id="accentGradientToggle"
-                    checked={isAccentGradient}
-                    onCheckedChange={() => setIsAccentGradient(!isAccentGradient)}
-                  />
-                  <label
-                    htmlFor="accentGradientToggle"
-                    className="text-sm font-medium leading-none"
-                  >
-                    Use Gradient
-                  </label>
-                </div>
-                {isAccentGradient ? (
-                  <div className="space-y-2">
-                    <div className="flex space-x-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="accentGradientColor1">Gradient Color 1</Label>
-                        <Input
-                          type="color"
-                          id="accentGradientColor1"
-                          value={accentGradient.color1}
-                          onChange={(e) => setAccentGradient({ ...accentGradient, color1: e.target.value })}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="accentGradientColor2">Gradient Color 2</Label>
-                        <Input
-                          type="color"
-                          id="accentGradientColor2"
-                          value={accentGradient.color2}
-                          onChange={(e) => setAccentGradient({ ...accentGradient, color2: e.target.value })}
-                        />
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="accentGradientDirection">Gradient Direction</Label>
-                      <select
-                        id="accentGradientDirection"
-                        value={accentGradient.direction}
-                        onChange={(e) => setAccentGradient({ ...accentGradient, direction: e.target.value })}
-                        className="w-full p-2 border rounded"
-                      >
-                        <option value="to right">To Right</option>
-                        <option value="to left">To Left</option>
-                        <option value="to bottom">To Bottom</option>
-                        <option value="to top">To Top</option>
-                      </select>
-                    </div>
-                    <div
-                      className="h-10 w-full rounded"
-                      style={{ background: `linear-gradient(${accentGradient.direction}, ${accentGradient.color1}, ${accentGradient.color2})` }}
-                    ></div>
-                  </div>
-                ) : (
-                  <Input
-                    type="color"
-                    id="accentColor"
-                    value={accentColor}
-                    onChange={(e) => setAccentColor(e.target.value)}
-                  />
-                )}
-              </div>
-
-              {/* Button Color */}
-              <div className="space-y-2">
-                <div className="flex items-center space-x-2">
-                  <Label htmlFor="buttonColor">Button Color</Label>
-                  <span className="text-xs text-gray-500">Color for buttons across the project</span>
-                </div>
-                <div className="flex items-center space-x-4">
-                  <Checkbox
-                    id="buttonGradientToggle"
-                    checked={isButtonGradient}
-                    onCheckedChange={() => setIsButtonGradient(!isButtonGradient)}
-                  />
-                  <label
-                    htmlFor="buttonGradientToggle"
-                    className="text-sm font-medium leading-none"
-                  >
-                    Use Gradient
-                  </label>
-                </div>
-                {isButtonGradient ? (
-                  <div className="space-y-2">
-                    <div className="flex space-x-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="buttonGradientColor1">Gradient Color 1</Label>
-                        <Input
-                          type="color"
-                          id="buttonGradientColor1"
-                          value={buttonGradient.color1}
-                          onChange={(e) => setButtonGradient({ ...buttonGradient, color1: e.target.value })}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="buttonGradientColor2">Gradient Color 1</Label>
-                        <Input
-                          type="color"
-                          id="buttonGradientColor2"
-                          value={buttonGradient.color2}
-                          onChange={(e) => setButtonGradient({ ...buttonGradient, color2: e.target.value })}
-                        />
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="buttonGradientDirection">Gradient Direction</Label>
-                      <select
-                        id="buttonGradientDirection"
-                        value={buttonGradient.direction}
-                        onChange={(e) => setButtonGradient({ ...buttonGradient, direction: e.target.value })}
-                        className="w-full p-2 border rounded"
-                      >
-                        <option value="to right">To Right</option>
-                        <option value="to left">To Left</option>
-                        <option value="to bottom">To Bottom</option>
-                        <option value="to top">To Top</option>
-                      </select>
-                    </div>
-                    <div
-                      className="h-10 w-full rounded"
-                      style={{ background: `linear-gradient(${buttonGradient.direction}, ${buttonGradient.color1}, ${buttonGradient.color2})` }}
-                    ></div>
-                  </div>
-                ) : (
-                  <Input
-                    type="color"
-                    id="buttonColor"
-                    value={buttonColor}
-                    onChange={(e) => setButtonColor(e.target.value)}
-                  />
-                )}
-              </div>
-            </div>
-          </div>
-        );
       case 9:
         const staticThemes = [
           {
@@ -3085,7 +2816,7 @@ export function CreateProject({ setActiveSection }: CreateProjectProps) {
           {
             id: "restaurant",
             name: "Restaurant",
-            preview: "https://via.placeholder.com/300x200/DC2626/FFFFFF?text=Restaurant",
+            preview: "https://html5up.net/uploads/images/paradigm-shift.jpg",
             demoUrl: "https://example.com/restaurant-demo",
             supportsSecondaryColor: true,
             defaultSecondaryColor: "#059669"
@@ -3093,7 +2824,7 @@ export function CreateProject({ setActiveSection }: CreateProjectProps) {
           {
             id: "tech-startup",
             name: "Tech Startup",
-            preview: "https://via.placeholder.com/300x200/1F2937/FFFFFF?text=Tech+Startup",
+            preview: "https://html5up.net/uploads/images/ethereal.jpg",
             demoUrl: "https://example.com/tech-startup-demo",
             supportsSecondaryColor: false
           },
@@ -3106,20 +2837,39 @@ export function CreateProject({ setActiveSection }: CreateProjectProps) {
             defaultSecondaryColor: "#84CC16"
           },
           {
-            id: "fitness",
-            name: "Fitness",
-            preview: "https://via.placeholder.com/300x200/F97316/FFFFFF?text=Fitness",
+            id: "multicolor",
+            name: "Multi Color",
+            preview: "https://i.ibb.co/VYqCvQFQ/Screenshot-2025-08-07-124033.jpg",
             demoUrl: "https://example.com/fitness-demo",
-            supportsSecondaryColor: true,
+            supportsSecondaryColor: false,
             defaultSecondaryColor: "#EC4899"
           },
           {
             id: "education",
-            name: "Education",
-            preview: "https://via.placeholder.com/300x200/7C3AED/FFFFFF?text=Education",
+            name: "Cleaning",
+            preview: "https://i.ibb.co/XrjnWMjv/Screenshot-2025-08-07-124818.jpg",
             demoUrl: "https://example.com/education-demo",
             supportsSecondaryColor: false
           }
+        ];
+        const palette = [
+          { name: "green", hex: "#10B981" },
+          { name: "black", hex: "#111827" },
+          { name: "purple", hex: "#8B5CF6" },
+          { name: "orange", hex: "#F97316" },
+          { name: "red", hex: "#EF4444" },
+          { name: "cyan", hex: "#06B6D4" },
+          { name: "yellow", hex: "#EAB308" },
+          { name: "pink", hex: "#EC4899" },
+          { name: "indigo", hex: "#6366F1" },
+          { name: "teal", hex: "#14B8A6" },
+          { name: "lime", hex: "#84CC16" },
+          { name: "rose", hex: "#F43F5E" },
+          { name: "sky", hex: "#0EA5E9" },
+          { name: "mint", hex: "#4ADE80" },
+          { name: "lavender", hex: "#C084FC" },
+          { name: "coral", hex: "#FB7185" },
+          { name: "gold", hex: "#FBBF24" },
         ];
 
         const handleThemeSelect = (themeId: string) => {
@@ -3139,14 +2889,13 @@ export function CreateProject({ setActiveSection }: CreateProjectProps) {
               <p className="text-sm text-gray-600">
                 Select a theme that best represents your brand. You can preview each theme before making your choice.
               </p>
-              
+
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                 {staticThemes.map((theme) => (
                   <div
                     key={theme.id}
-                    className={`border rounded-lg overflow-hidden cursor-pointer transition-all hover:shadow-lg ${
-                      selectedTheme === theme.id ? 'ring-2 ring-blue-500 bg-blue-50' : 'hover:border-gray-300'
-                    }`}
+                    className={`border rounded-lg overflow-hidden cursor-pointer transition-all hover:shadow-lg ${selectedTheme === theme.id ? 'ring-2 ring-blue-500 bg-blue-50' : 'hover:border-gray-300'
+                      }`}
                     onClick={() => handleThemeSelect(theme.id)}
                   >
                     <div className="relative">
@@ -3204,6 +2953,32 @@ export function CreateProject({ setActiveSection }: CreateProjectProps) {
                   </div>
                 </div>
               )}
+
+
+            {selectedTheme === "multicolor" && (
+  <div className="mt-4">
+    <h5 className="font-medium mb-2">Pick a sub‐accent</h5>
+    <div className="flex space-x-2 overflow-x-auto py-2">
+      {palette.map(c => (
+        <button
+          key={c.name}
+          onClick={() => setSubcolor(c.name)} // set subcolor to hex value
+          className={`
+            h-8 w-8 rounded-full border-2 transition-all
+            ${subcolor === c.name 
+              ? "ring-3 ring-blue-500 border-transparent scale-125" // Apply larger size and blue ring
+              : "border-gray-300 hover:border-gray-400"
+            }
+          `}
+          style={{ backgroundColor: c.hex }}
+          aria-label={c.name}
+        />
+      ))}
+    </div>
+  </div>
+)}
+
+
             </div>
           </div>
         );

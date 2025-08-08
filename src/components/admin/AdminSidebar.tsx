@@ -57,7 +57,7 @@ const getBaseSidebarItems = () => [
     icon: UserCog,
     submenu: [{ id: "manage-subadmin", label: "Manage", icon: UserCog }],
   },
-  // { id: "themes", label: "Themes", icon: Palette },
+  { id: "themes", label: "Themes", icon: Palette },
   // { id: "plugins", label: "Plugins", icon: Plug },
   // { id: "credits", label: "Credits", icon: Coins },
   // { id: "settings", label: "Settings", icon: Settings },
