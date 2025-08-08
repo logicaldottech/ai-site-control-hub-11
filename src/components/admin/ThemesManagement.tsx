@@ -1,59 +1,83 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Palette, SwatchBook, Check, Plus, Search, Trash2, Edit, Eye } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { themeApi, Theme } from "@/api/themeApi";
+import { CreateThemeDialog } from "./CreateThemeDialog";
+import { EditThemeDialog } from "./EditThemeDialog";
+import { Palette, SwatchBook, Search, Edit, Eye, ToggleLeft, ToggleRight, Loader2 } from "lucide-react";
 
 export function ThemesManagement() {
   const [activeTab, setActiveTab] = useState<string>("available");
   const [searchTerm, setSearchTerm] = useState<string>("");
+  const [themes, setThemes] = useState<Theme[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [editingTheme, setEditingTheme] = useState<Theme | null>(null);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const { toast } = useToast();
 
-  // Sample theme data - in a real app, these would come from an API
-  const availableThemes = [
-    { id: 1, name: "Modern Light", category: "Business", popularity: "High", status: "active", preview: "/themes/modern-light.jpg" },
-    { id: 2, name: "Dark Corporate", category: "Business", popularity: "Medium", status: "active", preview: "/themes/dark-corporate.jpg" },
-    { id: 3, name: "E-Commerce Pro", category: "E-Commerce", popularity: "High", status: "active", preview: "/themes/ecommerce-pro.jpg" },
-    { id: 4, name: "Portfolio Minimal", category: "Portfolio", popularity: "Medium", status: "active", preview: "/themes/portfolio-minimal.jpg" },
-    { id: 5, name: "Blog Standard", category: "Blog", popularity: "Low", status: "active", preview: "/themes/blog-standard.jpg" },
-    { id: 6, name: "Restaurant Special", category: "Food", popularity: "Medium", status: "active", preview: "/themes/restaurant.jpg" },
-    { id: 7, name: "Creative Agency", category: "Agency", popularity: "High", status: "active", preview: "/themes/creative-agency.jpg" },
-    { id: 8, name: "Real Estate Pro", category: "Real Estate", popularity: "Medium", status: "active", preview: "/themes/real-estate.jpg" },
-  ];
+  useEffect(() => {
+    loadThemes();
+  }, []);
 
-  const activeThemes = [
-    { id: 1, name: "Modern Light", projectCount: 12, lastUsed: "2023-05-15", category: "Business" },
-    { id: 3, name: "E-Commerce Pro", projectCount: 8, lastUsed: "2023-05-10", category: "E-Commerce" },
-    { id: 7, name: "Creative Agency", projectCount: 5, lastUsed: "2023-05-05", category: "Agency" },
-  ];
-
-  const filteredAvailableThemes = searchTerm 
-    ? availableThemes.filter(theme => 
-        theme.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        theme.category.toLowerCase().includes(searchTerm.toLowerCase()))
-    : availableThemes;
-
-  const filteredActiveThemes = searchTerm
-    ? activeThemes.filter(theme => 
-        theme.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        theme.category.toLowerCase().includes(searchTerm.toLowerCase()))
-    : activeThemes;
-
-  const getPopularityBadge = (popularity: string) => {
-    switch (popularity) {
-      case "High":
-        return <Badge className="bg-green-100 text-green-800">High</Badge>;
-      case "Medium":
-        return <Badge className="bg-blue-100 text-blue-800">Medium</Badge>;
-      case "Low":
-        return <Badge className="bg-gray-100 text-gray-800">Low</Badge>;
-      default:
-        return null;
+  const loadThemes = async () => {
+    try {
+      setLoading(true);
+      const themeData = await themeApi.listThemes();
+      setThemes(themeData);
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to load themes",
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
     }
   };
+
+  const handleToggleStatus = async (themeId: string, currentStatus: boolean) => {
+    try {
+      await themeApi.changeThemeStatus(themeId, !currentStatus);
+      toast({
+        title: "Success",
+        description: `Theme ${!currentStatus ? 'activated' : 'deactivated'} successfully`
+      });
+      loadThemes();
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to update theme status",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleEditTheme = (theme: Theme) => {
+    setEditingTheme(theme);
+    setEditDialogOpen(true);
+  };
+
+  const filteredThemes = searchTerm 
+    ? themes.filter(theme => 
+        theme.themeName.toLowerCase().includes(searchTerm.toLowerCase()))
+    : themes;
+
+  const activeThemes = filteredThemes.filter(theme => theme.isActive);
+  const availableThemes = filteredThemes;
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -62,9 +86,7 @@ export function ThemesManagement() {
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Themes Management</h1>
           <p className="text-gray-500 dark:text-gray-400 mt-1">Manage and customize website themes</p>
         </div>
-        <Button className="bg-blue-600 hover:bg-blue-700">
-          <Plus className="mr-2 h-4 w-4" /> Add Custom Theme
-        </Button>
+        <CreateThemeDialog onThemeCreated={loadThemes} />
       </div>
 
       <div className="flex justify-between items-center">
@@ -98,37 +120,80 @@ export function ThemesManagement() {
 
           <TabsContent value="available" className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-              {filteredAvailableThemes.map((theme) => (
-                <Card key={theme.id} className="overflow-hidden hover:shadow-md transition-all">
-                  <div className="aspect-video bg-gray-100 dark:bg-gray-800 relative">
-                    <div className="absolute inset-0 flex items-center justify-center text-gray-400">
-                      <Palette className="h-12 w-12" />
-                    </div>
+              {availableThemes.map((theme) => (
+                <Card key={theme._id} className="overflow-hidden hover:shadow-md transition-all">
+                  <div className="aspect-video bg-muted relative overflow-hidden">
+                    {theme.themeImageUrl ? (
+                      <img 
+                        src={theme.themeImageUrl} 
+                        alt={theme.themeName}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
+                        <Palette className="h-12 w-12" />
+                      </div>
+                    )}
                   </div>
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-lg">{theme.name}</CardTitle>
-                    <CardDescription>{theme.category}</CardDescription>
+                    <CardTitle className="text-lg">{theme.themeName}</CardTitle>
+                    <CardDescription>
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {theme.supportSecondaryColor && (
+                          <Badge variant="secondary" className="text-xs">Secondary Color</Badge>
+                        )}
+                        {theme.supportThemeSubColor && (
+                          <Badge variant="secondary" className="text-xs">Sub Color</Badge>
+                        )}
+                      </div>
+                    </CardDescription>
                   </CardHeader>
                   <CardContent className="pb-2">
                     <div className="flex justify-between items-center">
-                      <span>Popularity:</span>
-                      {getPopularityBadge(theme.popularity)}
+                      <span className="text-sm text-muted-foreground">Status:</span>
+                      <Badge variant={theme.isActive ? "default" : "secondary"}>
+                        {theme.isActive ? "Active" : "Inactive"}
+                      </Badge>
                     </div>
                   </CardContent>
-                  <CardFooter className="flex justify-between">
-                    <Button variant="outline" size="sm">
+                  <CardFooter className="flex flex-col sm:flex-row gap-2">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="w-full sm:w-auto"
+                      onClick={() => window.open(theme.themeDemoUrl, '_blank')}
+                    >
                       <Eye className="mr-2 h-4 w-4" />
                       Preview
                     </Button>
-                    <Button size="sm">Activate</Button>
+                    <div className="flex gap-2 w-full sm:w-auto">
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => handleEditTheme(theme)}
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => handleToggleStatus(theme._id!, theme.isActive)}
+                      >
+                        {theme.isActive ? (
+                          <ToggleRight className="h-4 w-4 text-green-600" />
+                        ) : (
+                          <ToggleLeft className="h-4 w-4 text-muted-foreground" />
+                        )}
+                      </Button>
+                    </div>
                   </CardFooter>
                 </Card>
               ))}
             </div>
             
-            {filteredAvailableThemes.length === 0 && (
+            {availableThemes.length === 0 && (
               <div className="text-center py-12">
-                <p className="text-gray-500">No themes match your search criteria</p>
+                <p className="text-muted-foreground">No themes match your search criteria</p>
               </div>
             )}
           </TabsContent>
@@ -138,7 +203,7 @@ export function ThemesManagement() {
               <CardHeader>
                 <CardTitle>Active Themes</CardTitle>
                 <CardDescription>
-                  Themes that are currently in use across your projects
+                  Themes that are currently active and available for use
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -147,29 +212,74 @@ export function ThemesManagement() {
                     <thead>
                       <tr className="border-b">
                         <th className="h-12 px-4 text-left align-middle font-medium">Theme</th>
-                        <th className="h-12 px-4 text-left align-middle font-medium">Category</th>
-                        <th className="h-12 px-4 text-left align-middle font-medium">Projects</th>
-                        <th className="h-12 px-4 text-left align-middle font-medium">Last Used</th>
+                        <th className="h-12 px-4 text-left align-middle font-medium hidden sm:table-cell">Features</th>
+                        <th className="h-12 px-4 text-left align-middle font-medium hidden md:table-cell">Created</th>
                         <th className="h-12 px-4 text-left align-middle font-medium">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredActiveThemes.map((theme) => (
-                        <tr key={theme.id} className="border-b">
-                          <td className="p-4 align-middle">{theme.name}</td>
-                          <td className="p-4 align-middle">{theme.category}</td>
-                          <td className="p-4 align-middle">{theme.projectCount}</td>
-                          <td className="p-4 align-middle">{theme.lastUsed}</td>
+                      {activeThemes.map((theme) => (
+                        <tr key={theme._id} className="border-b">
+                          <td className="p-4 align-middle">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded overflow-hidden bg-muted">
+                                {theme.themeImageUrl ? (
+                                  <img 
+                                    src={theme.themeImageUrl} 
+                                    alt={theme.themeName}
+                                    className="w-full h-full object-cover"
+                                  />
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center">
+                                    <Palette className="h-4 w-4 text-muted-foreground" />
+                                  </div>
+                                )}
+                              </div>
+                              <div>
+                                <div className="font-medium">{theme.themeName}</div>
+                                <div className="text-sm text-muted-foreground sm:hidden">
+                                  {theme.supportSecondaryColor && "Secondary Color"} 
+                                  {theme.supportThemeSubColor && theme.supportSecondaryColor && ", "}
+                                  {theme.supportThemeSubColor && "Sub Color"}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="p-4 align-middle hidden sm:table-cell">
+                            <div className="flex flex-wrap gap-1">
+                              {theme.supportSecondaryColor && (
+                                <Badge variant="secondary" className="text-xs">Secondary Color</Badge>
+                              )}
+                              {theme.supportThemeSubColor && (
+                                <Badge variant="secondary" className="text-xs">Sub Color</Badge>
+                              )}
+                            </div>
+                          </td>
+                          <td className="p-4 align-middle text-muted-foreground hidden md:table-cell">
+                            {theme.createdAt ? new Date(theme.createdAt).toLocaleDateString() : "N/A"}
+                          </td>
                           <td className="p-4 align-middle">
                             <div className="flex space-x-2">
-                              <Button variant="outline" size="sm">
+                              <Button 
+                                variant="outline" 
+                                size="sm"
+                                onClick={() => window.open(theme.themeDemoUrl, '_blank')}
+                              >
                                 <Eye className="h-4 w-4" />
                               </Button>
-                              <Button variant="outline" size="sm">
+                              <Button 
+                                variant="outline" 
+                                size="sm"
+                                onClick={() => handleEditTheme(theme)}
+                              >
                                 <Edit className="h-4 w-4" />
                               </Button>
-                              <Button variant="outline" size="sm" className="text-red-600 hover:text-red-700">
-                                <Trash2 className="h-4 w-4" />
+                              <Button 
+                                variant="outline" 
+                                size="sm"
+                                onClick={() => handleToggleStatus(theme._id!, theme.isActive)}
+                              >
+                                <ToggleRight className="h-4 w-4 text-green-600" />
                               </Button>
                             </div>
                           </td>
@@ -178,9 +288,9 @@ export function ThemesManagement() {
                     </tbody>
                   </table>
                   
-                  {filteredActiveThemes.length === 0 && (
+                  {activeThemes.length === 0 && (
                     <div className="text-center py-8">
-                      <p className="text-gray-500">No active themes match your search criteria</p>
+                      <p className="text-muted-foreground">No active themes found</p>
                     </div>
                   )}
                 </div>
@@ -191,26 +301,101 @@ export function ThemesManagement() {
           <TabsContent value="custom" className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle>Custom Themes</CardTitle>
-                <CardDescription>Your custom designed themes</CardDescription>
+                <CardTitle>All Themes</CardTitle>
+                <CardDescription>Manage all themes in your system</CardDescription>
               </CardHeader>
               <CardContent className="pt-6">
-                <div className="flex flex-col items-center justify-center py-16 text-center">
-                  <Palette className="h-16 w-16 text-gray-400 mb-4" />
-                  <h3 className="text-lg font-medium mb-2">No Custom Themes Yet</h3>
-                  <p className="text-gray-500 max-w-sm mb-6">
-                    Create your own custom themes with our theme builder or upload custom theme packages
-                  </p>
-                  <div className="flex gap-4">
-                    <Button>Create Theme</Button>
-                    <Button variant="outline">Upload Theme</Button>
-                  </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {filteredThemes.map((theme) => (
+                    <Card key={theme._id} className="overflow-hidden">
+                      <div className="aspect-video bg-muted relative overflow-hidden">
+                        {theme.themeImageUrl ? (
+                          <img 
+                            src={theme.themeImageUrl} 
+                            alt={theme.themeName}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
+                            <Palette className="h-8 w-8" />
+                          </div>
+                        )}
+                        <div className="absolute top-2 right-2">
+                          <Badge variant={theme.isActive ? "default" : "secondary"}>
+                            {theme.isActive ? "Active" : "Inactive"}
+                          </Badge>
+                        </div>
+                      </div>
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-base">{theme.themeName}</CardTitle>
+                        <CardDescription className="text-sm">
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {theme.supportSecondaryColor && (
+                              <Badge variant="outline" className="text-xs">Secondary</Badge>
+                            )}
+                            {theme.supportThemeSubColor && (
+                              <Badge variant="outline" className="text-xs">Sub Color</Badge>
+                            )}
+                          </div>
+                        </CardDescription>
+                      </CardHeader>
+                      <CardFooter className="pt-0">
+                        <div className="flex gap-2 w-full">
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="flex-1"
+                            onClick={() => window.open(theme.themeDemoUrl, '_blank')}
+                          >
+                            <Eye className="mr-1 h-3 w-3" />
+                            Preview
+                          </Button>
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => handleEditTheme(theme)}
+                          >
+                            <Edit className="h-3 w-3" />
+                          </Button>
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => handleToggleStatus(theme._id!, theme.isActive)}
+                          >
+                            {theme.isActive ? (
+                              <ToggleRight className="h-3 w-3 text-green-600" />
+                            ) : (
+                              <ToggleLeft className="h-3 w-3 text-muted-foreground" />
+                            )}
+                          </Button>
+                        </div>
+                      </CardFooter>
+                    </Card>
+                  ))}
                 </div>
+                
+                {filteredThemes.length === 0 && (
+                  <div className="text-center py-12">
+                    <Palette className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+                    <h3 className="text-lg font-medium mb-2">No Themes Found</h3>
+                    <p className="text-muted-foreground max-w-sm mx-auto mb-6">
+                      {searchTerm ? "No themes match your search criteria" : "Create your first theme to get started"}
+                    </p>
+                    <CreateThemeDialog onThemeCreated={loadThemes} />
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
         </Tabs>
       </div>
+
+      <EditThemeDialog 
+        theme={editingTheme}
+        open={editDialogOpen}
+        onOpenChange={setEditDialogOpen}
+        onThemeUpdated={loadThemes}
+      />
     </div>
   );
 }
