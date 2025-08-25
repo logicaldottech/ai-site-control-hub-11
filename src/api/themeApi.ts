@@ -1,4 +1,5 @@
-import { httpFileData, http } from "@/config";
+// src/api/themeApi.ts
+import { http } from "@/config";
 
 export interface Theme {
   _id?: string;
@@ -14,92 +15,58 @@ export interface Theme {
 
 export interface CreateThemeData {
   themeName: string;
-  supportThemeSubColor: string;
-  supportSecondaryColor: string;
+  supportThemeSubColor: string;  // "true"/"false"
+  supportSecondaryColor: string; // "true"/"false"
   themeDemoUrl: string;
   themeImageUrl: string;
-  isActive: string;
+  isActive: string;              // "true"/"false"
 }
 
 export interface UpdateThemeData extends CreateThemeData {
-  themeId: string;
+  themeId: string;               // sent in body
 }
 
+const bool = (v: string | boolean) =>
+  typeof v === "boolean" ? v : v === "true";
+
 export const themeApi = {
-  // Create a new theme
   createTheme: async (data: CreateThemeData): Promise<Theme> => {
-    try {
-      console.log('Creating theme with data:', data);
-      const formData = new FormData();
-      Object.entries(data).forEach(([key, value]) => {
-        formData.append(key, value);
-      });
-
-      const response = await httpFileData.post('/create_theme', formData);
-      console.log('Create theme response:', response.data);
-      return response.data;
-    } catch (error) {
-      console.error('Error creating theme:', error);
-      throw error;
-    }
+    const payload = {
+      themeName: data.themeName,
+      supportThemeSubColor: bool(data.supportThemeSubColor),
+      supportSecondaryColor: bool(data.supportSecondaryColor),
+      themeDemoUrl: data.themeDemoUrl,
+      themeImageUrl: data.themeImageUrl,
+      isActive: bool(data.isActive),
+    };
+    const res = await http.post("/create_theme", payload); // JSON, not FormData
+    return res.data?.theme ?? res.data;
   },
 
-  // Update an existing theme
   updateTheme: async (data: UpdateThemeData): Promise<Theme> => {
-    try {
-      console.log('Updating theme with data:', data);
-      const formData = new FormData();
-      Object.entries(data).forEach(([key, value]) => {
-        formData.append(key, value);
-      });
-
-      const response = await httpFileData.post('/update_theme', formData);
-      console.log('Update theme response:', response.data);
-      return response.data;
-    } catch (error) {
-      console.error('Error updating theme:', error);
-      throw error;
-    }
+    const payload = {
+      themeId: data.themeId, // in body
+      themeName: data.themeName,
+      supportThemeSubColor: bool(data.supportThemeSubColor),
+      supportSecondaryColor: bool(data.supportSecondaryColor),
+      themeDemoUrl: data.themeDemoUrl,
+      themeImageUrl: data.themeImageUrl,
+      // isActive optional here; don’t send unless UI changes it
+    };
+    const res = await http.post("/update_theme", payload); // POST per your routes
+    return res.data?.theme ?? res.data;
   },
 
-  // Get list of all themes
   listThemes: async (): Promise<Theme[]> => {
-    try {
-      console.log('Fetching themes from API...');
-      const response = await http.get('/list_themes');
-      console.log('List themes response:', response.data);
-      
-      // Handle different response formats
-      if (Array.isArray(response.data)) {
-        return response.data;
-      } else if (response.data.themes && Array.isArray(response.data.themes)) {
-        return response.data.themes;
-      } else if (response.data.data && Array.isArray(response.data.data)) {
-        return response.data.data;
-      } else {
-        console.warn('Unexpected response format:', response.data);
-        return [];
-      }
-    } catch (error) {
-      console.error('Error fetching themes:', error);
-      throw error;
-    }
+    const res = await http.get("/list_themes");
+    if (Array.isArray(res.data)) return res.data;
+    if (Array.isArray(res.data?.themes)) return res.data.themes;
+    if (Array.isArray(res.data?.data)) return res.data.data;
+    return [];
   },
 
-  // Change theme status (activate/deactivate)
   changeThemeStatus: async (themeId: string, isActive: boolean): Promise<Theme> => {
-    try {
-      console.log('Changing theme status:', { themeId, isActive });
-      const formData = new FormData();
-      formData.append('themeId', themeId);
-      formData.append('isActive', isActive.toString());
-
-      const response = await httpFileData.post('/change_theme_status', formData);
-      console.log('Change theme status response:', response.data);
-      return response.data;
-    } catch (error) {
-      console.error('Error changing theme status:', error);
-      throw error;
-    }
-  }
+    const res = await http.post("/change_theme_status", { themeId, isActive });
+    return res.data?.theme ?? res.data;
+  },
 };

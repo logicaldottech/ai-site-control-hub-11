@@ -34,7 +34,8 @@ export function ProjectList() {
 
   // Fetch projects from API with pagination and search
 useEffect(() => {
-  const socket = io(import.meta.env.VITE_SOCKET_URL || "http://localhost:1111");
+  const socket = io("http://localhost:1111");
+  // const socket = io("https://aibackend.todaystrends.site");
 
   const fetchProjects = async () => {
     try {
@@ -110,7 +111,7 @@ useEffect(() => {
   fetchProjects();
 
   // ✅ Continuous refresh every 5 seconds
-  const intervalId = setInterval(fetchProjects, 15000);
+  const intervalId = setInterval(fetchProjects, 1500000);
 
   socket.on("projectStatusUpdate", ({ projectId, status }) => {
     setProjects((prev) =>

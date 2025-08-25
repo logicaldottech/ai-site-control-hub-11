@@ -106,10 +106,10 @@ export function ThemesManagement() {
                 <SwatchBook className="mr-2 h-4 w-4" />
                 Active Themes
               </TabsTrigger>
-              <TabsTrigger value="custom" className="flex items-center">
+              {/* <TabsTrigger value="custom" className="flex items-center">
                 <Edit className="mr-2 h-4 w-4" />
                 Custom Themes
-              </TabsTrigger>
+              </TabsTrigger> */}
             </TabsList>
 
             <div className="relative w-64">

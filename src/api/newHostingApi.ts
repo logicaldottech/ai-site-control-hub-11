@@ -8,6 +8,7 @@ export interface HostingConnection {
   status: 'success' | 'failed';
   createdAt: string;
   updatedAt: string;
+  isOur: boolean;
 }
 
 export interface GetHostingsResponse {

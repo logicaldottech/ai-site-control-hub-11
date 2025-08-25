@@ -3,6 +3,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Wand2, Loader2 } from "lucide-react";
+
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { X, Check, ChevronRight, ChevronLeft, ClipboardList, Bot, Upload, Mail, Phone, MapPin, Search } from "lucide-react";
@@ -31,6 +33,11 @@ export function CreateProject({ setActiveSection }: CreateProjectProps) {
   const storedLastId = localStorage.getItem("lastCreateProjectId");
   const navProjectId = location.state?.projectId;
   const [projectId, setProjectId] = useState(navProjectId || storedLastId || null);
+  const [focusKeyword, setFocusKeyword] = useState<string>("");
+  const [projectKeywordsText, setProjectKeywordsText] = useState<string>("");
+
+  const [generatingFK, setGeneratingFK] = useState(false);
+  const [generatingPK, setGeneratingPK] = useState(false);
 
   const draftKey = projectId || "new";
   const lastSubKey = projectId ? `createProjectLastSubmitted:${projectId}` : null;
@@ -192,6 +199,32 @@ export function CreateProject({ setActiveSection }: CreateProjectProps) {
   const [showFinalSuccess, setShowFinalSuccess] = useState(false);
   const [redirectCounter, setRedirectCounter] = useState(7);
 
+
+  // Types for themes coming from API
+  type ApiTheme = {
+    _id: string;
+    themeName: string;
+    supportThemeSubColor: boolean;
+    supportSecondaryColor: boolean;
+    themeDemoUrl: string;
+    themeImageUrl: string;
+    isActive: boolean;
+  };
+
+  // UI-ready theme shape
+  type UiTheme = {
+    id: string;
+    name: string;
+    preview: string;
+    demoUrl: string;
+    supportsSecondaryColor: boolean;
+    supportThemeSubColor: boolean;
+  };
+
+  const [themesFromApi, setThemesFromApi] = useState<UiTheme[]>([]);
+  const [themesLoading, setThemesLoading] = useState<boolean>(false);
+
+
   // Page creation option - removed from here, now managed per country
 
 
@@ -204,6 +237,50 @@ export function CreateProject({ setActiveSection }: CreateProjectProps) {
       }
     });
   };
+  useEffect(() => {
+    const fetchActiveThemes = async () => {
+      try {
+        setThemesLoading(true);
+        // If your base path already includes /admin/v1, keep '/list_themes'
+        // Otherwise use: await httpFile.get('/admin/v1/list_themes')
+        const res = await httpFile.get('/list_themes');
+
+        // Handle various shapes your API might return
+        const raw: ApiTheme[] =
+          (Array.isArray(res.data) ? res.data :
+            Array.isArray(res.data?.themes) ? res.data.themes :
+              Array.isArray(res.data?.data) ? res.data.data : []) as ApiTheme[];
+
+        // Only active themes
+        const active = raw.filter(t => t.isActive);
+
+        // Map to UI shape
+        const mapped: UiTheme[] = active.map(t => ({
+          id: t._id,
+          name: t.themeName,
+          preview: t.themeImageUrl,
+          demoUrl: t.themeDemoUrl,
+          supportsSecondaryColor: t.supportSecondaryColor,
+          supportThemeSubColor: t.supportThemeSubColor,
+        }));
+
+        setThemesFromApi(mapped);
+      } catch (err: any) {
+        toast({
+          title: "Error",
+          description: err?.response?.data?.message || "Failed to load themes",
+          variant: "destructive",
+        });
+        setThemesFromApi([]);
+      } finally {
+        setThemesLoading(false);
+      }
+    };
+
+    if (step === 9) {
+      fetchActiveThemes();
+    }
+  }, [step]);
 
 
   useEffect(() => {
@@ -259,11 +336,93 @@ export function CreateProject({ setActiveSection }: CreateProjectProps) {
 
 
 
+  const cleanAIString = (str: any) =>
+    typeof str === "string"
+      ? str
+        .replace(/^"+|"+$/g, "")
+        .replace(/\\"/g, '"')
+        .replace(/\\n/g, " ")
+        .replace(/\n/g, " ")
+        .trim()
+      : "";
 
 
 
 
 
+  const generateFocusKeyword = async () => {
+    if (!projectName || !serviceType) {
+      toast({
+        title: "Missing info",
+        description: "Please enter Service Type and Project Name first.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setGeneratingFK(true);
+    try {
+      const token = localStorage.getItem("token");
+      const form = new FormData();
+      form.append("serviceType", serviceType);
+      form.append("projectName", projectName);
+
+      const res = await httpFile.post("/getFocusedKeyword", form, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      const kw = cleanAIString(res?.data?.data || "");
+      setFocusKeyword(kw);
+      toast({ title: "Generated", description: `Focus keyword: ${kw}` });
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err?.response?.data?.message || "Failed to generate focus keyword.",
+        variant: "destructive",
+      });
+    } finally {
+      setGeneratingFK(false);
+    }
+  };
+
+  const generateProjectKeywords = async () => {
+    if (!projectName || !serviceType) {
+      toast({
+        title: "Missing info",
+        description: "Please enter Service Type and Project Name first.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setGeneratingPK(true);
+    try {
+      const token = localStorage.getItem("token");
+      const form = new FormData();
+      form.append("serviceType", serviceType);
+      form.append("projectName", projectName);
+      if (focusKeyword) form.append("focusKeyword", focusKeyword);
+
+      const res = await httpFile.post("/getProjectKeywords", form, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      const arr = Array.isArray(res?.data?.data) ? res.data.data : [];
+      const joined = arr
+        .map((s: any) => cleanAIString(String(s || "")))
+        .filter(Boolean)
+        .join(", ");
+      setProjectKeywordsText(joined);
+
+      toast({ title: "Generated", description: "Project keywords updated." });
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err?.response?.data?.message || "Failed to generate project keywords.",
+        variant: "destructive",
+      });
+    } finally {
+      setGeneratingPK(false);
+    }
+  };
 
 
 
@@ -955,6 +1114,8 @@ export function CreateProject({ setActiveSection }: CreateProjectProps) {
         userId: admin._id,
         serviceType,
         projectName,
+        projectKeywordsText,
+        focusKeyword,
         wantImages: wantImages ? 1 : 0,
       };
 
@@ -1404,16 +1565,16 @@ export function CreateProject({ setActiveSection }: CreateProjectProps) {
           });
 
           await httpFile.post(
-          "/makeEachLocaionPage",
-          payload,
-          { headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } }
-        );
+            "/makeEachLocaionPage",
+            payload,
+            { headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } }
+          );
 
-        await httpFile.post(
-          "/makeEachLocationServicePage",
-          payload,
-          { headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } }
-        );
+          await httpFile.post(
+            "/makeEachLocationServicePage",
+            payload,
+            { headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } }
+          );
 
 
           setLastSavedSelectedTheme(selectedTheme);
@@ -2021,6 +2182,52 @@ export function CreateProject({ setActiveSection }: CreateProjectProps) {
                 Do you want images?
               </label>
             </div>
+
+            {/* --- NEW: Focus Keyword + Project Keywords --- */}
+            <div className="space-y-4 pt-2 border-t">
+              {/* Focus Keyword */}
+              <div className="space-y-2">
+                <Label htmlFor="focusKeyword">Main Focus Keyword</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="focusKeyword"
+                    placeholder="e.g., emergency electrician"
+                    value={focusKeyword}
+                    onChange={(e) => setFocusKeyword(e.target.value)}
+                    className="flex-1"
+                  />
+                  <Button type="button" onClick={generateFocusKeyword} disabled={generatingFK}>
+                    {generatingFK ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+                    <span className="ml-2 hidden sm:inline">Generate</span>
+                  </Button>
+                </div>
+                <p className="text-xs text-gray-500">
+                  One primary keyword to focus your SEO (you can edit it).
+                </p>
+              </div>
+
+              {/* Project Keywords */}
+              <div className="space-y-2">
+                <Label htmlFor="projectKeywords">Project Keywords (comma-separated)</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="projectKeywords"
+                    placeholder="e.g., 24 hour electrician, circuit breaker repair, wiring service"
+                    value={projectKeywordsText}
+                    onChange={(e) => setProjectKeywordsText(e.target.value)}
+                    className="flex-1"
+                  />
+                  <Button type="button" onClick={generateProjectKeywords} disabled={generatingPK}>
+                    {generatingPK ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+                    <span className="ml-2 hidden sm:inline">Generate</span>
+                  </Button>
+                </div>
+                <p className="text-xs text-gray-500">
+                  We’ll prefill with an AI list; you can edit them. Stored/used as an array by splitting on commas.
+                </p>
+              </div>
+            </div>
+
           </div>
         );
       case 2:
@@ -2788,70 +2995,7 @@ export function CreateProject({ setActiveSection }: CreateProjectProps) {
         );
 
 
-      case 9:
-        const staticThemes = [
-          {
-            id: "modern-business",
-            name: "Modern Business",
-            preview: "https://via.placeholder.com/300x200/3B82F6/FFFFFF?text=Modern+Business",
-            demoUrl: "https://example.com/modern-business-demo",
-            supportsSecondaryColor: true,
-            defaultSecondaryColor: "#EF4444"
-          },
-          {
-            id: "creative-portfolio",
-            name: "Creative Portfolio",
-            preview: "https://via.placeholder.com/300x200/8B5CF6/FFFFFF?text=Creative+Portfolio",
-            demoUrl: "https://example.com/creative-portfolio-demo",
-            supportsSecondaryColor: false
-          },
-          {
-            id: "e-commerce",
-            name: "E-Commerce",
-            preview: "https://via.placeholder.com/300x200/10B981/FFFFFF?text=E-Commerce",
-            demoUrl: "https://example.com/e-commerce-demo",
-            supportsSecondaryColor: true,
-            defaultSecondaryColor: "#F59E0B"
-          },
-          {
-            id: "restaurant",
-            name: "Restaurant",
-            preview: "https://html5up.net/uploads/images/paradigm-shift.jpg",
-            demoUrl: "https://example.com/restaurant-demo",
-            supportsSecondaryColor: true,
-            defaultSecondaryColor: "#059669"
-          },
-          {
-            id: "tech-startup",
-            name: "Tech Startup",
-            preview: "https://html5up.net/uploads/images/ethereal.jpg",
-            demoUrl: "https://example.com/tech-startup-demo",
-            supportsSecondaryColor: false
-          },
-          {
-            id: "healthcare",
-            name: "Healthcare",
-            preview: "https://via.placeholder.com/300x200/06B6D4/FFFFFF?text=Healthcare",
-            demoUrl: "https://example.com/healthcare-demo",
-            supportsSecondaryColor: true,
-            defaultSecondaryColor: "#84CC16"
-          },
-          {
-            id: "multicolor",
-            name: "Multi Color",
-            preview: "https://i.ibb.co/VYqCvQFQ/Screenshot-2025-08-07-124033.jpg",
-            demoUrl: "https://example.com/fitness-demo",
-            supportsSecondaryColor: false,
-            defaultSecondaryColor: "#EC4899"
-          },
-          {
-            id: "education",
-            name: "Cleaning",
-            preview: "https://i.ibb.co/XrjnWMjv/Screenshot-2025-08-07-124818.jpg",
-            demoUrl: "https://example.com/education-demo",
-            supportsSecondaryColor: false
-          }
-        ];
+      case 9: {
         const palette = [
           { name: "green", hex: "#10B981" },
           { name: "black", hex: "#111827" },
@@ -2874,13 +3018,11 @@ export function CreateProject({ setActiveSection }: CreateProjectProps) {
 
         const handleThemeSelect = (themeId: string) => {
           setSelectedTheme(themeId);
-          const theme = staticThemes.find(t => t.id === themeId);
-          if (theme?.supportsSecondaryColor && theme.defaultSecondaryColor) {
-            setThemeSecondaryColor(theme.defaultSecondaryColor);
-          }
+          // No defaultSecondaryColor from API anymore; keep current value as-is.
+          // If you want to reset on select: setThemeSecondaryColor("#000000");
         };
 
-        const selectedThemeData = staticThemes.find(t => t.id === selectedTheme);
+        const selectedThemeData = themesFromApi.find(t => t.id === selectedTheme);
 
         return (
           <div className="space-y-6">
@@ -2890,46 +3032,77 @@ export function CreateProject({ setActiveSection }: CreateProjectProps) {
                 Select a theme that best represents your brand. You can preview each theme before making your choice.
               </p>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                {staticThemes.map((theme) => (
-                  <div
-                    key={theme.id}
-                    className={`border rounded-lg overflow-hidden cursor-pointer transition-all hover:shadow-lg ${selectedTheme === theme.id ? 'ring-2 ring-blue-500 bg-blue-50' : 'hover:border-gray-300'
-                      }`}
-                    onClick={() => handleThemeSelect(theme.id)}
-                  >
-                    <div className="relative">
-                      <img
-                        src={theme.preview}
-                        alt={theme.name}
-                        className="w-full h-32 object-cover"
-                      />
-                      <div className="absolute top-2 left-2">
-                        <Checkbox
-                          checked={selectedTheme === theme.id}
-                          onChange={() => handleThemeSelect(theme.id)}
-                          className="bg-white"
+              {themesLoading ? (
+                <div className="text-sm text-muted-foreground">Loading themes…</div>
+              ) : themesFromApi.length === 0 ? (
+                <div className="text-sm text-muted-foreground">No active themes available.</div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                  {themesFromApi.map((theme) => (
+                    <div
+                      key={theme.id}
+                      className={`border rounded-lg overflow-hidden cursor-pointer transition-all hover:shadow-lg ${selectedTheme === theme.id ? 'ring-2 ring-blue-500 bg-blue-50' : 'hover:border-gray-300'
+                        }`}
+                      onClick={() => handleThemeSelect(theme.id)}
+                    >
+                      <div className="relative">
+                        <img
+                          src={theme.preview}
+                          alt={theme.name}
+                          className="w-full h-32 object-cover"
                         />
+                        <div className="absolute top-2 left-2">
+                          <Checkbox
+                            checked={selectedTheme === theme.id}
+                            onChange={() => handleThemeSelect(theme.id)}
+                            className="bg-white"
+                          />
+                        </div>
+                      </div>
+                      <div className="p-3 space-y-2">
+                        <h4 className="font-medium text-sm">{theme.name}</h4>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full text-xs"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            window.open(theme.demoUrl, '_blank');
+                          }}
+                        >
+                          Visit Demo
+                        </Button>
                       </div>
                     </div>
-                    <div className="p-3 space-y-2">
-                      <h4 className="font-medium text-sm">{theme.name}</h4>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="w-full text-xs"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          window.open(theme.demoUrl, '_blank');
-                        }}
-                      >
-                        Visit Demo
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
 
+              {/* Sub-accent picker (only if theme supports sub color) */}
+              {selectedThemeData?.supportThemeSubColor && (
+                <div className="mt-4">
+                  <h5 className="font-medium mb-2">Pick a sub‐accent</h5>
+                  <div className="flex space-x-2 overflow-x-auto py-2">
+                    {palette.map(c => (
+                      <button
+                        key={c.name}
+                        onClick={() => setSubcolor(c.name)}
+                        className={`
+                    h-8 w-8 rounded-full border-2 transition-all
+                    ${subcolor === c.name
+                            ? "ring-3 ring-blue-500 border-transparent scale-125"
+                            : "border-gray-300 hover:border-gray-400"
+                          }
+                  `}
+                        style={{ backgroundColor: c.hex }}
+                        aria-label={c.name}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Secondary color picker (only if theme supports secondary color) */}
               {selectedThemeData?.supportsSecondaryColor && (
                 <div className="mt-6 p-4 bg-gray-50 rounded-lg">
                   <h4 className="text-md font-medium mb-3">Customize Theme Colors</h4>
@@ -2953,35 +3126,15 @@ export function CreateProject({ setActiveSection }: CreateProjectProps) {
                   </div>
                 </div>
               )}
-
-
-            {selectedTheme === "multicolor" && (
-  <div className="mt-4">
-    <h5 className="font-medium mb-2">Pick a sub‐accent</h5>
-    <div className="flex space-x-2 overflow-x-auto py-2">
-      {palette.map(c => (
-        <button
-          key={c.name}
-          onClick={() => setSubcolor(c.name)} // set subcolor to hex value
-          className={`
-            h-8 w-8 rounded-full border-2 transition-all
-            ${subcolor === c.name 
-              ? "ring-3 ring-blue-500 border-transparent scale-125" // Apply larger size and blue ring
-              : "border-gray-300 hover:border-gray-400"
-            }
-          `}
-          style={{ backgroundColor: c.hex }}
-          aria-label={c.name}
-        />
-      ))}
-    </div>
-  </div>
-)}
-
-
             </div>
           </div>
         );
+      }
+
+
+
+
+
       default:
         return null;
     }
