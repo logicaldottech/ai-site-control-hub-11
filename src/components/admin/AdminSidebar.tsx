@@ -50,6 +50,7 @@ const getBaseSidebarItems = () => [
     icon: Link,
     submenu: [{ id: "domain-management", label: "Domain Management", icon: Link }],
   },
+  { id: "posts", label: "Blog Posts", icon: Newspaper },
   { id: "users", label: "Users", icon: Users },
   {
     id: "subadmin",
