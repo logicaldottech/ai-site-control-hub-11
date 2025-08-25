@@ -4,11 +4,29 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import { PostEditor } from "./components/admin/PostEditor";
 import { UpdateProject } from "./components/admin/UpdateProject";
 import Login from "./pages/Login";
+import { AdminLayout } from "./components/admin/AdminLayout";
+
+// Admin Pages
+import Dashboard from "./pages/admin/Dashboard";
+import CreateProject from "./pages/admin/CreateProject";
+import Projects from "./pages/admin/Projects";
+import Hosting from "./pages/admin/Hosting";
+import Domains from "./pages/admin/Domains";
+import Users from "./pages/admin/Users";
+import SubAdmin from "./pages/admin/SubAdmin";
+import Themes from "./pages/admin/Themes";
+import Posts from "./pages/admin/Posts";
+import PostCategories from "./pages/admin/PostCategories";
+import PostSubcategories from "./pages/admin/PostSubcategories";
+import PostTags from "./pages/admin/PostTags";
+import Pages from "./pages/admin/Pages";
+import Services from "./pages/admin/Services";
+import WebsiteGenerator from "./pages/admin/WebsiteGenerator";
+import BlogPosts from "./pages/admin/BlogPosts";
 
 const queryClient = new QueryClient();
 
@@ -20,16 +38,36 @@ const App = () => (
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
-          <Route path="/admin" element={<Index />} />
-          <Route path="/admin/create-project" element={<Index initialSection="create-project" />} />
-          <Route path="/admin/project-list" element={<Index initialSection="project-list" />} />
+          
+          {/* Admin Routes with Layout */}
+          <Route path="/admin" element={<AdminLayout><Dashboard /></AdminLayout>} />
+          <Route path="/admin/create-project" element={<AdminLayout><CreateProject /></AdminLayout>} />
+          <Route path="/admin/projects" element={<AdminLayout><Projects /></AdminLayout>} />
+          <Route path="/admin/hosting" element={<AdminLayout><Hosting /></AdminLayout>} />
+          <Route path="/admin/domains" element={<AdminLayout><Domains /></AdminLayout>} />
+          <Route path="/admin/users" element={<AdminLayout><Users /></AdminLayout>} />
+          <Route path="/admin/subadmin" element={<AdminLayout><SubAdmin /></AdminLayout>} />
+          <Route path="/admin/themes" element={<AdminLayout><Themes /></AdminLayout>} />
+          <Route path="/admin/posts" element={<AdminLayout><Posts /></AdminLayout>} />
+          <Route path="/admin/post-categories" element={<AdminLayout><PostCategories /></AdminLayout>} />
+          <Route path="/admin/post-subcategories" element={<AdminLayout><PostSubcategories /></AdminLayout>} />
+          <Route path="/admin/post-tags" element={<AdminLayout><PostTags /></AdminLayout>} />
+          <Route path="/admin/pages" element={<AdminLayout><Pages /></AdminLayout>} />
+          <Route path="/admin/services" element={<AdminLayout><Services /></AdminLayout>} />
+          <Route path="/admin/website-generator" element={<AdminLayout><WebsiteGenerator /></AdminLayout>} />
+          <Route path="/admin/blog-posts" element={<AdminLayout><BlogPosts /></AdminLayout>} />
+          
+          {/* Project and Post Editor Routes */}
           <Route path="/admin/project/:projectId/details" element={<UpdateProject />} />
-          <Route path="/services/:projectId" element={<Index initialSection="services" />} />
-          <Route path="/" element={<Index />} />
-          <Route path="/posts" element={<Index />} />
-          <Route path="/post-editor" element={<Index />} />
-          <Route path="/post-editor/:postId" element={<Index />} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+          <Route path="/post-editor" element={<AdminLayout><PostEditor /></AdminLayout>} />
+          <Route path="/post-editor/:postId" element={<AdminLayout><PostEditor /></AdminLayout>} />
+          
+          {/* Legacy Routes - Redirect to Admin */}
+          <Route path="/" element={<AdminLayout><Dashboard /></AdminLayout>} />
+          <Route path="/posts" element={<AdminLayout><Posts /></AdminLayout>} />
+          <Route path="/services/:projectId" element={<AdminLayout><Services /></AdminLayout>} />
+          
+          {/* Catch-all Route */}
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

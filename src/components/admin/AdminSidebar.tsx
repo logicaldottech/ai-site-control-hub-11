@@ -25,7 +25,7 @@ import {
 import Swal from "sweetalert2";
 import "sweetalert2/dist/sweetalert2.min.css";
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 
 interface AdminSidebarProps {
   activeSection: string;
@@ -33,34 +33,32 @@ interface AdminSidebarProps {
 }
 
 const getBaseSidebarItems = () => [
-  { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, route: "/admin" },
   {
     id: "projects",
     label: "Projects",
     icon: ListTodo,
     submenu: [
-      { id: "create-project", label: "Create Project", icon: ListPlus },
-      { id: "project-list", label: "Project List", icon: ListTodo },
+      { id: "create-project", label: "Create Project", icon: ListPlus, route: "/admin/create-project" },
+      { id: "project-list", label: "Project List", icon: ListTodo, route: "/admin/projects" },
     ],
   },
-  { id: "hosting", label: "Hosting", icon: Server },
+  { id: "hosting", label: "Hosting", icon: Server, route: "/admin/hosting" },
   {
     id: "domains",
     label: "Domains",
     icon: Link,
-    submenu: [{ id: "domain-management", label: "Domain Management", icon: Link }],
+    submenu: [{ id: "domain-management", label: "Domain Management", icon: Link, route: "/admin/domains" }],
   },
-  { id: "users", label: "Users", icon: Users },
+  { id: "users", label: "Users", icon: Users, route: "/admin/users" },
   {
     id: "subadmin",
     label: "Sub Admin",
     icon: UserCog,
-    submenu: [{ id: "manage-subadmin", label: "Manage", icon: UserCog }],
+    submenu: [{ id: "manage-subadmin", label: "Manage", icon: UserCog, route: "/admin/subadmin" }],
   },
-  { id: "themes", label: "Themes", icon: Palette },
-  // { id: "plugins", label: "Plugins", icon: Plug },
-  // { id: "credits", label: "Credits", icon: Coins },
-  // { id: "settings", label: "Settings", icon: Settings },
+  { id: "themes", label: "Themes", icon: Palette, route: "/admin/themes" },
+  { id: "blog-posts", label: "Blog Posts", icon: Newspaper, route: "/admin/blog-posts" },
 ];
 
 const getContentManagementItems = () => [
@@ -69,14 +67,14 @@ const getContentManagementItems = () => [
     label: "Posts",
     icon: Newspaper,
     submenu: [
-      { id: "posts", label: "All Posts", icon: Newspaper },
-      { id: "post-categories", label: "Categories", icon: FolderOpen },
-      { id: "post-subcategories", label: "Subcategories", icon: Tag },
-      { id: "post-tags", label: "Tags", icon: Tags },
+      { id: "posts", label: "All Posts", icon: Newspaper, route: "/admin/posts" },
+      { id: "post-categories", label: "Categories", icon: FolderOpen, route: "/admin/post-categories" },
+      { id: "post-subcategories", label: "Subcategories", icon: Tag, route: "/admin/post-subcategories" },
+      { id: "post-tags", label: "Tags", icon: Tags, route: "/admin/post-tags" },
     ],
   },
-  { id: "pages", label: "Pages", icon: Layout },
-  { id: "website-generator", label: "Website Generator", icon: FileText },
+  { id: "pages", label: "Pages", icon: Layout, route: "/admin/pages" },
+  { id: "website-generator", label: "Website Generator", icon: FileText, route: "/admin/website-generator" },
 ];
 
 export function AdminSidebar({ activeSection, setActiveSection }: AdminSidebarProps) {
@@ -84,6 +82,7 @@ export function AdminSidebar({ activeSection, setActiveSection }: AdminSidebarPr
   const [expandedSubmenu, setExpandedSubmenu] = useState<string | null>(null);
   const [sidebarItems, setSidebarItems] = useState(getBaseSidebarItems());
   const navigate = useNavigate();
+  const location = useLocation();
 
   // Logout handler using SweetAlert2 for confirmation and toast
   const handleLogout = () => {
@@ -228,6 +227,8 @@ export function AdminSidebar({ activeSection, setActiveSection }: AdminSidebarPr
                 onClick={() => {
                   if (hasSubmenu) {
                     toggleSubmenu(item.id);
+                  } else if (item.route) {
+                    navigate(item.route);
                   } else {
                     setActiveSection(item.id);
                   }
@@ -271,7 +272,13 @@ export function AdminSidebar({ activeSection, setActiveSection }: AdminSidebarPr
                     return (
                       <button
                         key={subItem.id}
-                        onClick={() => setActiveSection(subItem.id)}
+                        onClick={() => {
+                          if (subItem.route) {
+                            navigate(subItem.route);
+                          } else {
+                            setActiveSection(subItem.id);
+                          }
+                        }}
                         className={cn(
                           "w-full flex items-center space-x-3 px-3 py-2 rounded-lg transition-colors text-left",
                           activeSection === subItem.id
