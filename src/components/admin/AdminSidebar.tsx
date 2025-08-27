@@ -50,7 +50,7 @@ const getBaseSidebarItems = () => [
     icon: Link,
     submenu: [{ id: "domain-management", label: "Domain Management", icon: Link, route: "/admin/domains" }],
   },
-  { id: "users", label: "Users", icon: Users, route: "/admin/users" },
+
   {
     id: "subadmin",
     label: "Sub Admin",
@@ -58,7 +58,7 @@ const getBaseSidebarItems = () => [
     submenu: [{ id: "manage-subadmin", label: "Manage", icon: UserCog, route: "/admin/subadmin" }],
   },
   { id: "themes", label: "Themes", icon: Palette, route: "/admin/themes" },
-  { id: "blog-posts", label: "Blog Posts", icon: Newspaper, route: "/admin/blog-posts" },
+  { id: "project-blogs", label: "Blog Projects", icon: Newspaper, route: "/admin/project-blogs" },
 ];
 
 const getContentManagementItems = () => [

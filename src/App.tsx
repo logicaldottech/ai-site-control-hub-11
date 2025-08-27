@@ -16,17 +16,19 @@ import CreateProject from "./pages/admin/CreateProject";
 import Projects from "./pages/admin/Projects";
 import Hosting from "./pages/admin/Hosting";
 import Domains from "./pages/admin/Domains";
-import Users from "./pages/admin/Users";
+
 import SubAdmin from "./pages/admin/SubAdmin";
 import Themes from "./pages/admin/Themes";
-import Posts from "./pages/admin/Posts";
-import PostCategories from "./pages/admin/PostCategories";
-import PostSubcategories from "./pages/admin/PostSubcategories";
-import PostTags from "./pages/admin/PostTags";
+
+import CreateBlogPost from "./pages/admin/CreateBlogPost"
+import EditBlogPost from "./pages/admin/EditBlogPost"
+
+
 import Pages from "./pages/admin/Pages";
 import Services from "./pages/admin/Services";
 import WebsiteGenerator from "./pages/admin/WebsiteGenerator";
 import BlogPosts from "./pages/admin/BlogPosts";
+import ProjectBlogs from "./pages/admin/ProjectBlogs";
 
 const queryClient = new QueryClient();
 
@@ -43,19 +45,22 @@ const App = () => (
           <Route path="/admin" element={<AdminLayout><Dashboard /></AdminLayout>} />
           <Route path="/admin/create-project" element={<AdminLayout><CreateProject /></AdminLayout>} />
           <Route path="/admin/projects" element={<AdminLayout><Projects /></AdminLayout>} />
+          <Route path="/admin/project-list" element={<AdminLayout><Projects /></AdminLayout>} />
           <Route path="/admin/hosting" element={<AdminLayout><Hosting /></AdminLayout>} />
           <Route path="/admin/domains" element={<AdminLayout><Domains /></AdminLayout>} />
-          <Route path="/admin/users" element={<AdminLayout><Users /></AdminLayout>} />
+    
           <Route path="/admin/subadmin" element={<AdminLayout><SubAdmin /></AdminLayout>} />
           <Route path="/admin/themes" element={<AdminLayout><Themes /></AdminLayout>} />
-          <Route path="/admin/posts" element={<AdminLayout><Posts /></AdminLayout>} />
-          <Route path="/admin/post-categories" element={<AdminLayout><PostCategories /></AdminLayout>} />
-          <Route path="/admin/post-subcategories" element={<AdminLayout><PostSubcategories /></AdminLayout>} />
-          <Route path="/admin/post-tags" element={<AdminLayout><PostTags /></AdminLayout>} />
+      
+  
+   
           <Route path="/admin/pages" element={<AdminLayout><Pages /></AdminLayout>} />
           <Route path="/admin/services" element={<AdminLayout><Services /></AdminLayout>} />
           <Route path="/admin/website-generator" element={<AdminLayout><WebsiteGenerator /></AdminLayout>} />
+          <Route path="/admin/project-blogs" element={<AdminLayout><ProjectBlogs /></AdminLayout>} />
           <Route path="/admin/blog-posts" element={<AdminLayout><BlogPosts /></AdminLayout>} />
+          <Route path="/admin/create-post" element={<AdminLayout><CreateBlogPost /></AdminLayout>} />
+          <Route path="/admin/edit-post" element={<AdminLayout><EditBlogPost /></AdminLayout>} />
           
           {/* Project and Post Editor Routes */}
           <Route path="/admin/project/:projectId/details" element={<UpdateProject />} />
@@ -64,7 +69,7 @@ const App = () => (
           
           {/* Legacy Routes - Redirect to Admin */}
           <Route path="/" element={<AdminLayout><Dashboard /></AdminLayout>} />
-          <Route path="/posts" element={<AdminLayout><Posts /></AdminLayout>} />
+
           <Route path="/services/:projectId" element={<AdminLayout><Services /></AdminLayout>} />
           
           {/* Catch-all Route */}
