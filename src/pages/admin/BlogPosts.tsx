@@ -199,10 +199,16 @@ const handleEditPost = (p: ApiBlog) => {
 
 
           {/* AI Generated Blogs -> open dialog */}
-          <Button onClick={handleAIPost} variant="outline" className="flex items-center gap-2">
-            <Sparkles className="h-4 w-4" />
-            AI Generated Blogs
-          </Button>
+        {/* AI Generated Blogs -> go to new page */}
+<Button
+  onClick={() => navigate("/admin/create-post-ai", { state: { projectId } })}
+  variant="outline"
+  className="flex items-center gap-2"
+>
+  <Sparkles className="h-4 w-4" />
+  AI Generated Blogs
+</Button>
+
         </div>
       </div>
 

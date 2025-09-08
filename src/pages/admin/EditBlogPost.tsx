@@ -15,10 +15,17 @@ import { RichTextEditor } from "@/components/editor/RichTextEditor";
 const BASE_URL = import.meta.env.REACT_APP_API_URL || "http://localhost:1111/admin/v1";
 const UPLOAD_URL = `${BASE_URL.replace(/\/$/, "")}/uploadFile`;
 
+
 const BLOG_TYPES = [
-  "technical", "tutorial", "guide", "case-study", "news",
-  "opinion", "how-to", "product", "performance", "security",
-];
+  { id: "how", label: "How-To", note: "Step-by-step guides" },
+  { id: "best", label: "Best", note: "Telling about best" },
+  { id: "comparison", label: "VS / Comparison", note: "A vs B breakdown" },
+  { id: "what", label: "What", note: "What is the reason or use of…" },
+] as const;
+
+type BlogTypeId = (typeof BLOG_TYPES)[number]["id"];
+const VALID_TYPE_IDS = new Set(BLOG_TYPES.map(t => t.id));
+
 
 function toLocalDatetimeInput(msLike?: string | number | null): string {
   if (!msLike) return "";
@@ -52,7 +59,9 @@ export default function EditBlogPost() {
   const [title, setTitle] = useState("");
   const [information, setInformation] = useState("");
   const [content, setContent] = useState("<p>Start writing…</p>");
-  const [type, setType] = useState<string>(BLOG_TYPES[0]);
+  // was: const [type, setType] = useState<string>(BLOG_TYPES[0]);
+  const [type, setType] = useState<BlogTypeId>(BLOG_TYPES[0].id);
+
   const [authorName, setAuthorName] = useState("");
 
   // Meta
@@ -94,11 +103,14 @@ export default function EditBlogPost() {
 
         const b = json?.data || {};
         setProjectId(b.projectId || "");
+        console.log(b,"Blog data");
 
         setTitle(b.title || "");
         setInformation(b.information || "");
         setContent(b.content || "<p></p>");
-        setType(b.type || BLOG_TYPES[0]);
+        // was: setType(b.type || BLOG_TYPES[0]);
+        setType(VALID_TYPE_IDS.has(b.type) ? (b.type as BlogTypeId) : BLOG_TYPES[0].id);
+
         setAuthorName(b.authorName || "");
 
         // meta
@@ -300,12 +312,22 @@ export default function EditBlogPost() {
             </div>
             <div>
               <Label>Type</Label>
-              <Select value={type} onValueChange={(v) => setType(v)} disabled={loading}>
-                <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
+              <Select value={type} onValueChange={(v) => setType(v as BlogTypeId)} disabled={loading}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select type" />
+                </SelectTrigger>
                 <SelectContent>
-                  {BLOG_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                  {BLOG_TYPES.map(t => (
+                    <SelectItem key={t.id} value={t.id}>
+                      <div className="flex flex-col">
+                        <span className="font-medium">{t.label}</span>
+                        <span className="text-xs text-muted-foreground">{t.note}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
+
             </div>
             <div>
               <Label htmlFor="author">Author Name</Label>

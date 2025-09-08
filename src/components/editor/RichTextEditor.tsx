@@ -110,17 +110,31 @@ export function RichTextEditor({
       .tiptap ul, .post-preview ul { list-style: disc; padding-left: 1.5rem; }
       .tiptap ol, .post-preview ol { list-style: decimal; padding-left: 1.5rem; }
       .tiptap::after, .post-preview::after { content:""; display:block; clear:both; }
+
+      /* ensure links are visibly styled in editor + preview */
+      .tiptap a, .post-preview a { text-decoration: underline; color: #2563eb; cursor: pointer; }
+      .tiptap a:hover, .post-preview a:hover { text-decoration: underline; }
+      .tiptap a:visited, .post-preview a:visited { color: #7c3aed; }
     `;
     document.head.appendChild(style);
     return () => style.remove();
   }, [height]);
+
 
   const editor = useEditor({
     extensions: [
       StarterKit.configure({ bulletList: { keepMarks: true }, orderedList: { keepMarks: true } }),
       Underline,
       FloatableImage.configure({ inline: false }),
-      Link.configure({ openOnClick: true, autolink: true, HTMLAttributes: { rel: "noopener noreferrer nofollow" } }),
+      Link.configure({
+        autolink: true,
+        linkOnPaste: true,
+        openOnClick: true,
+        HTMLAttributes: {
+          target: "_blank",
+          rel: "noopener noreferrer nofollow",
+        },
+      }),
       TextStyle,
       Color,
       TextAlign.configure({ types: ["heading", "paragraph"] }),
@@ -156,7 +170,7 @@ export function RichTextEditor({
     if (value === lastPushedRef.current) return;
     const current = editor.getHTML();
     if (value !== current) {
-     editor.commands.setContent(value, false);
+      editor.commands.setContent(value, false);
 
       setHtmlContent(value);
       lastPushedRef.current = value;
@@ -194,7 +208,7 @@ export function RichTextEditor({
       setShowLinkInput(true);
       editor.chain().focus().run();
     },
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [editor]);
 
   // --- image attribute helpers (alignment + sizing) ---
@@ -462,7 +476,7 @@ export function RichTextEditor({
               variant="outline"
               onClick={() => {
                 if (!editor) return;
-              editor.commands.setContent(htmlContent || "<p></p>", true);
+                editor.commands.setContent(htmlContent || "<p></p>", true);
 
                 toast.success("Applied HTML to editor");
                 setActiveTab("visual");

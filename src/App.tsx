@@ -21,6 +21,8 @@ import SubAdmin from "./pages/admin/SubAdmin";
 import Themes from "./pages/admin/Themes";
 
 import CreateBlogPost from "./pages/admin/CreateBlogPost"
+import CreateBlogPostAi from "./pages/admin/CreateBlogPostAi"
+
 import EditBlogPost from "./pages/admin/EditBlogPost"
 
 
@@ -60,6 +62,7 @@ const App = () => (
           <Route path="/admin/project-blogs" element={<AdminLayout><ProjectBlogs /></AdminLayout>} />
           <Route path="/admin/blog-posts" element={<AdminLayout><BlogPosts /></AdminLayout>} />
           <Route path="/admin/create-post" element={<AdminLayout><CreateBlogPost /></AdminLayout>} />
+          <Route path="/admin/create-post-ai" element={<AdminLayout><CreateBlogPostAi /></AdminLayout>} />
           <Route path="/admin/edit-post" element={<AdminLayout><EditBlogPost /></AdminLayout>} />
           
           {/* Project and Post Editor Routes */}

@@ -13,11 +13,20 @@ import { RichTextEditor } from "@/components/editor/RichTextEditor";
 
 const BASE_URL = import.meta.env.REACT_APP_API_URL || "https://aibackend.todaystrends.site/admin/v1";
 const UPLOAD_URL = `${BASE_URL.replace(/\/$/, "")}/uploadFile`;
+// Replace your BLOG_TYPES with this:
 
 const BLOG_TYPES = [
-    "technical", "tutorial", "guide", "case-study", "news",
-    "opinion", "how-to", "product", "performance", "security",
-];
+  { id: "how", label: "How-To", note: "Step-by-step guides" },
+  { id: "best", label: "Best", note: "Telling about best" },
+  { id: "comparison", label: "VS / Comparison", note: "A vs B breakdown" },
+  { id: "what", label: "What", note: "What is the reason or use of…" },
+] as const;
+
+type BlogTypeId = (typeof BLOG_TYPES)[number]["id"];
+
+// Update your state to store the `id`
+
+
 
 export default function CreateBlogPost() {
     const navigate = useNavigate();
@@ -28,7 +37,8 @@ export default function CreateBlogPost() {
     const [title, setTitle] = useState("");
     const [information, setInformation] = useState(""); // maps to "information" in API
     const [content, setContent] = useState("<p>Start writing…</p>");
-    const [type, setType] = useState<string>(BLOG_TYPES[0]);
+    const [type, setType] = useState<BlogTypeId>(BLOG_TYPES[0].id);
+
     const [authorName, setAuthorName] = useState("");
 
     // Meta
@@ -215,12 +225,22 @@ export default function CreateBlogPost() {
                         </div>
                         <div>
                             <Label>Type</Label>
-                            <Select value={type} onValueChange={(v) => setType(v)}>
-                                <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
+                            <Select value={type} onValueChange={(v) => setType(v as BlogTypeId)}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Select type" />
+                                </SelectTrigger>
                                 <SelectContent>
-                                    {BLOG_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                                    {BLOG_TYPES.map(t => (
+                                        <SelectItem key={t.id} value={t.id}>
+                                            <div className="flex flex-col">
+                                                <span className="font-medium">{t.label}</span>
+                                                <span className="text-xs text-muted-foreground">{t.note}</span>
+                                            </div>
+                                        </SelectItem>
+                                    ))}
                                 </SelectContent>
                             </Select>
+
                         </div>
                         <div>
                             <Label htmlFor="author">Author Name</Label>
