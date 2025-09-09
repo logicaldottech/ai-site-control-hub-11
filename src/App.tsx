@@ -29,6 +29,7 @@ import EditBlogPost from "./pages/admin/EditBlogPost"
 import Pages from "./pages/admin/Pages";
 import Services from "./pages/admin/Services";
 import WebsiteGenerator from "./pages/admin/WebsiteGenerator";
+import Authors from "./pages/admin/Authors";
 import BlogPosts from "./pages/admin/BlogPosts";
 import ProjectBlogs from "./pages/admin/ProjectBlogs";
 
@@ -59,6 +60,7 @@ const App = () => (
           <Route path="/admin/pages" element={<AdminLayout><Pages /></AdminLayout>} />
           <Route path="/admin/services" element={<AdminLayout><Services /></AdminLayout>} />
           <Route path="/admin/website-generator" element={<AdminLayout><WebsiteGenerator /></AdminLayout>} />
+          <Route path="/admin/authors" element={<AdminLayout><Authors /></AdminLayout>} />
           <Route path="/admin/project-blogs" element={<AdminLayout><ProjectBlogs /></AdminLayout>} />
           <Route path="/admin/blog-posts" element={<AdminLayout><BlogPosts /></AdminLayout>} />
           <Route path="/admin/create-post" element={<AdminLayout><CreateBlogPost /></AdminLayout>} />

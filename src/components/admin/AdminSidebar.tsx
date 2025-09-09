@@ -59,6 +59,7 @@ const getBaseSidebarItems = () => [
   },
   { id: "themes", label: "Themes", icon: Palette, route: "/admin/themes" },
   { id: "project-blogs", label: "Blog Projects", icon: Newspaper, route: "/admin/project-blogs" },
+  { id: "blog-authors", label: "Blog Authors", icon: Users, route: "/admin/authors" },
 ];
 
 const getContentManagementItems = () => [
