@@ -21,7 +21,7 @@ type Author = {
   jobTitle: string;
   bio: string;
   image: string;
-  links: string[];
+  links: {label: string, url: string}[];
 };
 
 export function AuthorsManagement() {
@@ -36,8 +36,14 @@ export function AuthorsManagement() {
     name: "",
     jobTitle: "",
     bio: "",
-    links: [] as string[],
   });
+  const [socialLinks, setSocialLinks] = useState({
+    linkedin: "",
+    instagram: "",
+    facebook: "",
+    youtube: "",
+  });
+  const [otherLinks, setOtherLinks] = useState<{label: string, url: string}[]>([{label: "", url: ""}]);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string>("");
 
@@ -112,13 +118,29 @@ export function AuthorsManagement() {
   };
 
   // Handle links input (comma separated)
-  const handleLinksChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const linksString = e.target.value;
-    const linksArray = linksString.split(',').map(link => link.trim()).filter(link => link);
-    setFormData((prev) => ({
+  const handleSocialLinkChange = (platform: string, value: string) => {
+    setSocialLinks(prev => ({
       ...prev,
-      links: linksArray,
+      [platform]: value
     }));
+  };
+
+  const handleOtherLinkChange = (index: number, field: 'label' | 'url', value: string) => {
+    setOtherLinks(prev => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], [field]: value };
+      return updated;
+    });
+  };
+
+  const addOtherLink = () => {
+    setOtherLinks(prev => [...prev, { label: "", url: "" }]);
+  };
+
+  const removeOtherLink = (index: number) => {
+    if (otherLinks.length > 1) {
+      setOtherLinks(prev => prev.filter((_, i) => i !== index));
+    }
   };
 
   // Submit new author to API
@@ -142,7 +164,24 @@ export function AuthorsManagement() {
       formDataToSend.append('name', formData.name);
       formDataToSend.append('jobTitle', formData.jobTitle);
       formDataToSend.append('about', formData.bio);
-      formDataToSend.append('links', JSON.stringify(formData.links));
+      
+      // Combine social links and other links into the expected format
+      const allLinks = [];
+      
+      // Add social media links
+      if (socialLinks.linkedin) allLinks.push({ label: 'LinkedIn', url: socialLinks.linkedin });
+      if (socialLinks.instagram) allLinks.push({ label: 'Instagram', url: socialLinks.instagram });
+      if (socialLinks.facebook) allLinks.push({ label: 'Facebook', url: socialLinks.facebook });
+      if (socialLinks.youtube) allLinks.push({ label: 'YouTube', url: socialLinks.youtube });
+      
+      // Add other links
+      otherLinks.forEach(link => {
+        if (link.label && link.url) {
+          allLinks.push({ label: link.label, url: link.url });
+        }
+      });
+      
+      formDataToSend.append('links', JSON.stringify(allLinks));
       
       if (imageFile) {
         formDataToSend.append('image', imageFile);
@@ -176,7 +215,9 @@ export function AuthorsManagement() {
           description: `Author ${view === "edit" ? "updated" : "created"} successfully!`,
         });
         setView("list");
-        setFormData({ name: "", jobTitle: "", bio: "", links: [] });
+        setFormData({ name: "", jobTitle: "", bio: "" });
+        setSocialLinks({ linkedin: "", instagram: "", facebook: "", youtube: "" });
+        setOtherLinks([{label: "", url: ""}]);
         setImageFile(null);
         setImagePreview("");
         setSelectedAuthor(null);
@@ -228,8 +269,31 @@ export function AuthorsManagement() {
       name: author.name,
       jobTitle: author.jobTitle,
       bio: author.bio,
-      links: author.links,
     });
+    
+    // Parse author links into social links and other links
+    const socialLinksData = { linkedin: "", instagram: "", facebook: "", youtube: "" };
+    const otherLinksData: {label: string, url: string}[] = [];
+    
+    if (author.links && author.links.length > 0) {
+      author.links.forEach(link => {
+        const label = link.label.toLowerCase();
+        if (label === 'linkedin') {
+          socialLinksData.linkedin = link.url;
+        } else if (label === 'instagram') {
+          socialLinksData.instagram = link.url;
+        } else if (label === 'facebook') {
+          socialLinksData.facebook = link.url;
+        } else if (label === 'youtube') {
+          socialLinksData.youtube = link.url;
+        } else {
+          otherLinksData.push(link);
+        }
+      });
+    }
+    
+    setSocialLinks(socialLinksData);
+    setOtherLinks(otherLinksData.length > 0 ? otherLinksData : [{label: "", url: ""}]);
     setImagePreview(author.image ? `${author.image}` : "");
     setView("edit");
   };
@@ -250,7 +314,9 @@ export function AuthorsManagement() {
           </h1>
           <Button variant="outline" onClick={() => {
             setView("list");
-            setFormData({ name: "", jobTitle: "", bio: "", links: [] });
+            setFormData({ name: "", jobTitle: "", bio: "" });
+            setSocialLinks({ linkedin: "", instagram: "", facebook: "", youtube: "" });
+            setOtherLinks([{label: "", url: ""}]);
             setImageFile(null);
             setImagePreview("");
             setSelectedAuthor(null);
@@ -338,16 +404,100 @@ export function AuthorsManagement() {
                 />
               </div>
               <div className="md:col-span-2">
-                <label htmlFor="links" className="block text-sm font-medium">
-                  Social Links (comma separated)
+                <label className="block text-sm font-medium mb-4">
+                  Social Media Links
                 </label>
-                <Input
-                  id="links"
-                  name="links"
-                  placeholder="https://twitter.com/author, https://linkedin.com/in/author"
-                  value={formData.links.join(', ')}
-                  onChange={handleLinksChange}
-                />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                  <div>
+                    <label htmlFor="linkedin" className="block text-sm font-medium mb-1">
+                      LinkedIn
+                    </label>
+                    <Input
+                      id="linkedin"
+                      name="linkedin"
+                      placeholder="https://linkedin.com/in/username"
+                      value={socialLinks.linkedin}
+                      onChange={(e) => handleSocialLinkChange('linkedin', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="instagram" className="block text-sm font-medium mb-1">
+                      Instagram
+                    </label>
+                    <Input
+                      id="instagram"
+                      name="instagram"
+                      placeholder="https://instagram.com/username"
+                      value={socialLinks.instagram}
+                      onChange={(e) => handleSocialLinkChange('instagram', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="facebook" className="block text-sm font-medium mb-1">
+                      Facebook
+                    </label>
+                    <Input
+                      id="facebook"
+                      name="facebook"
+                      placeholder="https://facebook.com/username"
+                      value={socialLinks.facebook}
+                      onChange={(e) => handleSocialLinkChange('facebook', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="youtube" className="block text-sm font-medium mb-1">
+                      YouTube
+                    </label>
+                    <Input
+                      id="youtube"
+                      name="youtube"
+                      placeholder="https://youtube.com/c/username"
+                      value={socialLinks.youtube}
+                      onChange={(e) => handleSocialLinkChange('youtube', e.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium mb-2">
+                  Other Links
+                </label>
+                {otherLinks.map((link, index) => (
+                  <div key={index} className="flex gap-2 mb-2">
+                    <Input
+                      placeholder="Label (e.g., Website, Portfolio)"
+                      value={link.label}
+                      onChange={(e) => handleOtherLinkChange(index, 'label', e.target.value)}
+                      className="flex-1"
+                    />
+                    <Input
+                      placeholder="URL"
+                      value={link.url}
+                      onChange={(e) => handleOtherLinkChange(index, 'url', e.target.value)}
+                      className="flex-1"
+                    />
+                    {otherLinks.length > 1 && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => removeOtherLink(index)}
+                        className="px-3"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                ))}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={addOtherLink}
+                  className="mt-2"
+                >
+                  Add Another Link
+                </Button>
               </div>
               <div className="md:col-span-2">
                 <label htmlFor="image" className="block text-sm font-medium mb-2">
@@ -383,7 +533,9 @@ export function AuthorsManagement() {
                 className="mr-2"
                 onClick={() => {
                   setView("list");
-                  setFormData({ name: "", jobTitle: "", bio: "", links: [] });
+                  setFormData({ name: "", jobTitle: "", bio: "" });
+                  setSocialLinks({ linkedin: "", instagram: "", facebook: "", youtube: "" });
+                  setOtherLinks([{label: "", url: ""}]);
                   setImageFile(null);
                   setImagePreview("");
                   setSelectedAuthor(null);
