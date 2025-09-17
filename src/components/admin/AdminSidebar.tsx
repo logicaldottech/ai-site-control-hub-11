@@ -21,6 +21,7 @@ import {
   Coins,
   Server,
   LogOut,
+  MessageSquare,
 } from "lucide-react";
 import Swal from "sweetalert2";
 import "sweetalert2/dist/sweetalert2.min.css";
@@ -60,6 +61,7 @@ const getBaseSidebarItems = () => [
   { id: "themes", label: "Themes", icon: Palette, route: "/admin/themes" },
   { id: "project-blogs", label: "Blog Projects", icon: Newspaper, route: "/admin/project-blogs" },
   { id: "blog-authors", label: "Blog Authors", icon: Users, route: "/admin/authors" },
+  { id: "reviews", label: "Reviews Approval", icon: MessageSquare, route: "/admin/reviews" },
 ];
 
 const getContentManagementItems = () => [
