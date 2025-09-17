@@ -132,9 +132,10 @@ export function FakeReviewsManagement() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Generate Fake Reviews</h1>
+    <div className="p-6">
+      <div className="mb-6">
+        <h1 className="text-3xl font-bold tracking-tight">Generate Fake Reviews</h1>
+        <p className="text-muted-foreground mt-2">Select a blog to generate fake reviews</p>
       </div>
 
       {/* Blogs List */}
