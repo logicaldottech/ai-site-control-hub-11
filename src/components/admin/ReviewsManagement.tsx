@@ -11,19 +11,35 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Check, X, Search, Eye } from "lucide-react";
+import { Check, X, Search } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { http } from "../../config.js";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 
 type Review = {
   _id: string;
-  name: string;
-  email: string;
-  message: string;
+  user: {
+    _id: string;
+    fullName: string;
+    email: string;
+    image?: string | null;
+    type: number;
+  };
+  blog: {
+    _id: string;
+    title: string;
+    type: string;
+  };
   rating: number;
+  reviewText: string;
   status: number; // 0=pending, 1=approved, 2=rejected
   createdAt: string;
-  blogId: string;
 };
 
 export function ReviewsManagement() {
@@ -33,15 +49,19 @@ export function ReviewsManagement() {
   const [limit, setLimit] = useState(10);
   const [totalPages, setTotalPages] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<"0" | "1" | "2">("0"); // 0=pending, 1=approved, 2=rejected
+  const [activeTab, setActiveTab] = useState<"0" | "1" | "2">("0");
 
-  // Fetch reviews from API
+  // Dialog states
+  const [blogDialogOpen, setBlogDialogOpen] = useState(false);
+  const [reviewDialogOpen, setReviewDialogOpen] = useState(false);
+  const [selectedBlog, setSelectedBlog] = useState<{ title: string; type: string } | null>(null);
+  const [selectedReview, setSelectedReview] = useState<{ text: string; user: string } | null>(null);
+
   const fetchReviews = async (status: string = "0") => {
     setLoading(true);
     try {
       const token = localStorage.getItem("token");
       const formData = new FormData();
-      formData.append("blogId", "6877c8de807b014b1507afb1"); // You might want to make this dynamic
       formData.append("page", page.toString());
       formData.append("limit", limit.toString());
       formData.append("status", status);
@@ -53,9 +73,10 @@ export function ReviewsManagement() {
         },
       });
 
-      if (response.data.success) {
-        setReviews(response.data.data.reviews || []);
-        setTotalPages(response.data.data.totalPages || 0);
+      if (response.status === 200) {
+        const { reviews, pagination } = response.data.data;
+        setReviews(reviews || []);
+        setTotalPages(pagination?.pages || 0);
       } else {
         toast({
           variant: "destructive",
@@ -75,7 +96,6 @@ export function ReviewsManagement() {
     }
   };
 
-  // Approve or disapprove review
   const handleReviewAction = async (reviewId: string, status: "1" | "2") => {
     try {
       const token = localStorage.getItem("token");
@@ -90,13 +110,12 @@ export function ReviewsManagement() {
         },
       });
 
-      if (response.data.success) {
+      if (response.status === 200) {
+        setReviews((prev) => prev.filter((r) => r._id !== reviewId)); // Optimistic UI
         toast({
           title: "Success",
           description: `Review ${status === "1" ? "approved" : "rejected"} successfully`,
         });
-        // Refresh the current tab
-        fetchReviews(activeTab);
       } else {
         toast({
           variant: "destructive",
@@ -114,21 +133,19 @@ export function ReviewsManagement() {
     }
   };
 
-  // Filter reviews based on search term
   const filteredReviews = reviews.filter(
     (review) =>
-      review.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      review.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      review.message.toLowerCase().includes(searchTerm.toLowerCase())
+      review.user.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      review.user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      review.reviewText.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      review.blog.title.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Handle tab change
   const handleTabChange = (value: string) => {
     setActiveTab(value as "0" | "1" | "2");
-    setPage(1); // Reset to first page when switching tabs
+    setPage(1);
   };
 
-  // Fetch reviews when tab or page changes
   useEffect(() => {
     fetchReviews(activeTab);
   }, [activeTab, page, limit]);
@@ -150,6 +167,14 @@ export function ReviewsManagement() {
     return "★".repeat(rating) + "☆".repeat(5 - rating);
   };
 
+  const truncateWords = (text: string, count: number) => {
+    const words = text.split(" ");
+    if (words.length > count) {
+      return words.slice(0, count).join(" ") + "...";
+    }
+    return text;
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -166,7 +191,7 @@ export function ReviewsManagement() {
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
         <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="0">Pending ({reviews.length})</TabsTrigger>
+          <TabsTrigger value="0">Pending</TabsTrigger>
           <TabsTrigger value="1">Approved</TabsTrigger>
           <TabsTrigger value="2">Rejected</TabsTrigger>
         </TabsList>
@@ -179,6 +204,7 @@ export function ReviewsManagement() {
                   <TableRow>
                     <TableHead>Name</TableHead>
                     <TableHead>Email</TableHead>
+                    <TableHead>Blog</TableHead>
                     <TableHead>Rating</TableHead>
                     <TableHead>Message</TableHead>
                     <TableHead>Date</TableHead>
@@ -189,28 +215,47 @@ export function ReviewsManagement() {
                 <TableBody>
                   {loading ? (
                     <TableRow>
-                      <TableCell colSpan={status === "0" ? 7 : 6} className="text-center py-8">
+                      <TableCell colSpan={status === "0" ? 8 : 7} className="text-center py-8">
                         Loading reviews...
                       </TableCell>
                     </TableRow>
                   ) : filteredReviews.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={status === "0" ? 7 : 6} className="text-center py-8">
+                      <TableCell colSpan={status === "0" ? 8 : 7} className="text-center py-8">
                         No reviews found.
                       </TableCell>
                     </TableRow>
                   ) : (
                     filteredReviews.map((review) => (
                       <TableRow key={review._id}>
-                        <TableCell className="font-medium">{review.name}</TableCell>
-                        <TableCell>{review.email}</TableCell>
+                        <TableCell className="font-medium">{review.user.fullName}</TableCell>
+                        <TableCell>{review.user.email}</TableCell>
+                        <TableCell>
+                          <button
+                            className="text-blue-600 hover:underline"
+                            onClick={() => {
+                              setSelectedBlog({ title: review.blog.title, type: review.blog.type });
+                              setBlogDialogOpen(true);
+                            }}
+                          >
+                            {truncateWords(review.blog.title, 5)}
+                          </button>
+                        </TableCell>
                         <TableCell>
                           <span className="text-yellow-500">
                             {renderStars(review.rating)} ({review.rating}/5)
                           </span>
                         </TableCell>
-                        <TableCell className="max-w-xs truncate">
-                          {review.message}
+                        <TableCell>
+                          <button
+                            className="text-blue-600 hover:underline max-w-xs truncate"
+                            onClick={() => {
+                              setSelectedReview({ text: review.reviewText, user: review.user.fullName });
+                              setReviewDialogOpen(true);
+                            }}
+                          >
+                            {truncateWords(review.reviewText, 10)}
+                          </button>
                         </TableCell>
                         <TableCell>
                           {new Date(review.createdAt).toLocaleDateString()}
@@ -245,24 +290,15 @@ export function ReviewsManagement() {
               </Table>
             </div>
 
-            {/* Pagination */}
             {totalPages > 1 && (
               <div className="flex justify-between items-center">
-                <Button
-                  variant="outline"
-                  onClick={() => setPage(page - 1)}
-                  disabled={page === 1}
-                >
+                <Button variant="outline" onClick={() => setPage(page - 1)} disabled={page === 1}>
                   Previous
                 </Button>
                 <span className="text-sm text-muted-foreground">
                   Page {page} of {totalPages}
                 </span>
-                <Button
-                  variant="outline"
-                  onClick={() => setPage(page + 1)}
-                  disabled={page === totalPages}
-                >
+                <Button variant="outline" onClick={() => setPage(page + 1)} disabled={page === totalPages}>
                   Next
                 </Button>
               </div>
@@ -270,6 +306,40 @@ export function ReviewsManagement() {
           </TabsContent>
         ))}
       </Tabs>
+
+      {/* Blog info popup */}
+      <Dialog open={blogDialogOpen} onOpenChange={setBlogDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Blog Info</DialogTitle>
+            <DialogDescription>
+              {selectedBlog && (
+                <>
+                  <p><strong>Title:</strong> {selectedBlog.title}</p>
+                  <p><strong>Type:</strong> {selectedBlog.type}</p>
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+        </DialogContent>
+      </Dialog>
+
+      {/* Full review popup */}
+      <Dialog open={reviewDialogOpen} onOpenChange={setReviewDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Full Review</DialogTitle>
+            <DialogDescription>
+              {selectedReview && (
+                <>
+                  <p><strong>Reviewer:</strong> {selectedReview.user}</p>
+                  <p><strong>Message:</strong> {selectedReview.text}</p>
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
