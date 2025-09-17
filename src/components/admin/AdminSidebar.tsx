@@ -62,6 +62,7 @@ const getBaseSidebarItems = () => [
   { id: "project-blogs", label: "Blog Projects", icon: Newspaper, route: "/admin/project-blogs" },
   { id: "blog-authors", label: "Blog Authors", icon: Users, route: "/admin/authors" },
   { id: "reviews", label: "Reviews Approval", icon: MessageSquare, route: "/admin/reviews" },
+  { id: "fake-reviews", label: "Generate Fake Reviews", icon: Tags, route: "/admin/fake-reviews" },
 ];
 
 const getContentManagementItems = () => [

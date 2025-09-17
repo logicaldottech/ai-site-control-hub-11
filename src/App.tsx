@@ -31,6 +31,7 @@ import Services from "./pages/admin/Services";
 import WebsiteGenerator from "./pages/admin/WebsiteGenerator";
 import Authors from "./pages/admin/Authors";
 import Reviews from "./pages/admin/Reviews";
+import FakeReviews from "./pages/admin/FakeReviews";
 import BlogPosts from "./pages/admin/BlogPosts";
 import ProjectBlogs from "./pages/admin/ProjectBlogs";
 
@@ -63,6 +64,7 @@ const App = () => (
           <Route path="/admin/website-generator" element={<AdminLayout><WebsiteGenerator /></AdminLayout>} />
            <Route path="/admin/authors" element={<AdminLayout><Authors /></AdminLayout>} />
            <Route path="/admin/reviews" element={<AdminLayout><Reviews /></AdminLayout>} />
+           <Route path="/admin/fake-reviews" element={<AdminLayout><FakeReviews /></AdminLayout>} />
           <Route path="/admin/project-blogs" element={<AdminLayout><ProjectBlogs /></AdminLayout>} />
           <Route path="/admin/blog-posts" element={<AdminLayout><BlogPosts /></AdminLayout>} />
           <Route path="/admin/create-post" element={<AdminLayout><CreateBlogPost /></AdminLayout>} />
