@@ -14,6 +14,7 @@ import { Search, Edit, Trash2, Upload } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import { httpFile } from "../../config.js";
+import { withBase } from '@/utils/url';
 
 type Author = {
   _id: string;
@@ -21,7 +22,7 @@ type Author = {
   jobTitle: string;
   bio: string;
   image: string;
-  links: {label: string, url: string}[];
+  links: { label: string, url: string }[];
 };
 
 export function AuthorsManagement() {
@@ -43,7 +44,7 @@ export function AuthorsManagement() {
     facebook: "",
     youtube: "",
   });
-  const [otherLinks, setOtherLinks] = useState<{label: string, url: string}[]>([{label: "", url: ""}]);
+  const [otherLinks, setOtherLinks] = useState<{ label: string, url: string }[]>([{ label: "", url: "" }]);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string>("");
 
@@ -160,35 +161,35 @@ export function AuthorsManagement() {
     try {
       const token = localStorage.getItem("token");
       const formDataToSend = new FormData();
-      
+
       formDataToSend.append('name', formData.name);
       formDataToSend.append('jobTitle', formData.jobTitle);
       formDataToSend.append('about', formData.bio);
-      
+
       // Combine social links and other links into the expected format
       const allLinks = [];
-      
+
       // Add social media links
       if (socialLinks.linkedin) allLinks.push({ label: 'LinkedIn', url: socialLinks.linkedin });
       if (socialLinks.instagram) allLinks.push({ label: 'Instagram', url: socialLinks.instagram });
       if (socialLinks.facebook) allLinks.push({ label: 'Facebook', url: socialLinks.facebook });
       if (socialLinks.youtube) allLinks.push({ label: 'YouTube', url: socialLinks.youtube });
-      
+
       // Add other links
       otherLinks.forEach(link => {
         if (link.label && link.url) {
           allLinks.push({ label: link.label, url: link.url });
         }
       });
-      
+
       formDataToSend.append('links', JSON.stringify(allLinks));
-      
+
       if (imageFile) {
         formDataToSend.append('image', imageFile);
       }
 
-      const endpoint = view === "edit" && selectedAuthor 
-        ? `/edit_author/${selectedAuthor._id}` 
+      const endpoint = view === "edit" && selectedAuthor
+        ? `/edit_author/${selectedAuthor._id}`
         : "/create_author";
 
       const res = await httpFile.post(endpoint, formDataToSend, {
@@ -217,7 +218,7 @@ export function AuthorsManagement() {
         setView("list");
         setFormData({ name: "", jobTitle: "", bio: "" });
         setSocialLinks({ linkedin: "", instagram: "", facebook: "", youtube: "" });
-        setOtherLinks([{label: "", url: ""}]);
+        setOtherLinks([{ label: "", url: "" }]);
         setImageFile(null);
         setImagePreview("");
         setSelectedAuthor(null);
@@ -270,11 +271,11 @@ export function AuthorsManagement() {
       jobTitle: author.jobTitle,
       bio: author.bio,
     });
-    
+
     // Parse author links into social links and other links
     const socialLinksData = { linkedin: "", instagram: "", facebook: "", youtube: "" };
-    const otherLinksData: {label: string, url: string}[] = [];
-    
+    const otherLinksData: { label: string, url: string }[] = [];
+
     if (author.links && author.links.length > 0) {
       author.links.forEach(link => {
         const label = link.label.toLowerCase();
@@ -291,10 +292,11 @@ export function AuthorsManagement() {
         }
       });
     }
-    
+
     setSocialLinks(socialLinksData);
-    setOtherLinks(otherLinksData.length > 0 ? otherLinksData : [{label: "", url: ""}]);
-    setImagePreview(author.image ? `${author.image}` : "");
+    setOtherLinks(otherLinksData.length > 0 ? otherLinksData : [{ label: "", url: "" }]);
+    setImagePreview(author.image ? withBase(author.image) : "");
+
     setView("edit");
   };
 
@@ -316,7 +318,7 @@ export function AuthorsManagement() {
             setView("list");
             setFormData({ name: "", jobTitle: "", bio: "" });
             setSocialLinks({ linkedin: "", instagram: "", facebook: "", youtube: "" });
-            setOtherLinks([{label: "", url: ""}]);
+            setOtherLinks([{ label: "", url: "" }]);
             setImageFile(null);
             setImagePreview("");
             setSelectedAuthor(null);
@@ -535,7 +537,7 @@ export function AuthorsManagement() {
                   setView("list");
                   setFormData({ name: "", jobTitle: "", bio: "" });
                   setSocialLinks({ linkedin: "", instagram: "", facebook: "", youtube: "" });
-                  setOtherLinks([{label: "", url: ""}]);
+                  setOtherLinks([{ label: "", url: "" }]);
                   setImageFile(null);
                   setImagePreview("");
                   setSelectedAuthor(null);
@@ -595,7 +597,8 @@ export function AuthorsManagement() {
                     <TableCell>
                       {author.image ? (
                         <img
-                          src={author.image}
+                          src={withBase(author.image)}
+
                           alt={author.name}
                           className="w-10 h-10 rounded-full object-cover"
                         />

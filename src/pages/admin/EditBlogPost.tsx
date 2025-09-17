@@ -11,10 +11,21 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@
 import { Save, Sparkles, Upload, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { RichTextEditor } from "@/components/editor/RichTextEditor";
+import { httpFile } from "../../config.js";
 
 const BASE_URL = import.meta.env.REACT_APP_API_URL || "http://localhost:1111/admin/v1";
 const UPLOAD_URL = `${BASE_URL.replace(/\/$/, "")}/uploadFile`;
 
+const IMG_BASE =
+  import.meta.env.VITE_IMAGES_BASE_URL ||
+  import.meta.env.REACT_APP_IMAGES_BASE_URL ||
+  "https://aibackend.todaystrends.site";
+
+function makeAbsUrl(url?: string): string {
+  if (!url) return "";
+  if (/^https?:\/\//i.test(url)) return url;
+  return `${IMG_BASE}${url.startsWith("/") ? "" : "/"}${url}`;
+}
 
 const BLOG_TYPES = [
   { id: "how", label: "How-To", note: "Step-by-step guides" },
@@ -25,7 +36,7 @@ const BLOG_TYPES = [
 
 type BlogTypeId = (typeof BLOG_TYPES)[number]["id"];
 const VALID_TYPE_IDS = new Set(BLOG_TYPES.map(t => t.id));
-
+type AuthorItem = { _id: string; name: string };
 
 function toLocalDatetimeInput(msLike?: string | number | null): string {
   if (!msLike) return "";
@@ -33,7 +44,6 @@ function toLocalDatetimeInput(msLike?: string | number | null): string {
   if (!n) return "";
   const d = new Date(n);
   if (isNaN(d.getTime())) return "";
-  // YYYY-MM-DDTHH:mm (local)
   const pad = (x: number) => `${x}`.padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
@@ -59,15 +69,20 @@ export default function EditBlogPost() {
   const [title, setTitle] = useState("");
   const [information, setInformation] = useState("");
   const [content, setContent] = useState("<p>Start writing…</p>");
-  // was: const [type, setType] = useState<string>(BLOG_TYPES[0]);
   const [type, setType] = useState<BlogTypeId>(BLOG_TYPES[0].id);
 
-  const [authorName, setAuthorName] = useState("");
+  // Authors
+  const [authors, setAuthors] = useState<AuthorItem[]>([]);
+  const [authorId, setAuthorId] = useState<string>("");
+
+  // Key fix: remember what the blog says its author is.
+  // undefined = not fetched yet, string = id, null = explicitly none.
+  const [blogAuthorId, setBlogAuthorId] = useState<string | null | undefined>(undefined);
 
   // Meta
   const [metaTitle, setMetaTitle] = useState("");
   const [metaDescription, setMetaDescription] = useState("");
-  const [metaKeywords, setMetaKeywords] = useState<string>(""); // comma-separated in UI
+  const [metaKeywords, setMetaKeywords] = useState<string>("");
 
   // Cover image
   const [coverUrl, setCoverUrl] = useState("");
@@ -86,7 +101,27 @@ export default function EditBlogPost() {
     [token]
   );
 
-  // ----- Load blog -----
+  // Load authors (do NOT pick a default here to avoid clobbering blog's saved author)
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await httpFile.get<{ data: AuthorItem[] }>("/fetch_authors", {
+          headers: { Authorization: `Bearer ${token || ""}` },
+        });
+        const list = Array.isArray(res.data?.data) ? res.data.data : [];
+        setAuthors(list);
+      } catch (e: any) {
+        const msg = e?.response?.data?.message || e?.message || "Failed to load authors";
+        toast.error(msg);
+        if (e?.response?.status === 401) {
+          localStorage.removeItem("token");
+          navigate("/login");
+        }
+      }
+    })();
+  }, [navigate, token]);
+
+  // Load blog
   useEffect(() => {
     const run = async () => {
       if (!blogId) {
@@ -95,128 +130,150 @@ export default function EditBlogPost() {
         return;
       }
       try {
-        const url = new URL(`${BASE_URL}/getBlog`);
-        url.searchParams.set("id", blogId);
-        const res = await fetch(url.toString(), { headers: { Authorization: `Bearer ${token || ""}` } });
-        const json = await res.json();
-        if (!res.ok) throw new Error(json?.message || "Failed to load blog");
-
+        const res = await httpFile.get("/getBlog", {
+          headers: { Authorization: `Bearer ${token || ""}` },
+          params: { id: blogId },
+        });
+        const json = res.data;
         const b = json?.data || {};
-        setProjectId(b.projectId || "");
-        console.log(b,"Blog data");
 
+        setProjectId(b.projectId || "");
         setTitle(b.title || "");
         setInformation(b.information || "");
         setContent(b.content || "<p></p>");
-        // was: setType(b.type || BLOG_TYPES[0]);
         setType(VALID_TYPE_IDS.has(b.type) ? (b.type as BlogTypeId) : BLOG_TYPES[0].id);
 
-        setAuthorName(b.authorName || "");
+        // capture blog's saved author id (string, null, or undefined)
+        setBlogAuthorId(b.authorId ? String(b.authorId) : null);
 
-        // meta
+        // Meta
         const sm = b.seoMeta || {};
         setMetaTitle(sm.metaTitle || "");
         setMetaDescription(sm.metaDescription || "");
         setMetaKeywords(Array.isArray(sm.keywords) ? sm.keywords.join(", ") : "");
 
-        // cover (if your API returns it)
+        // Cover
         const ci = b.coverImage || {};
-        setCoverUrl(ci.url || "");
+        setCoverUrl(makeAbsUrl(ci.url || ""));
         setCoverAlt(ci.alt || "");
 
-        // status + schedule
+        // Status + Schedule
         setStatus(Number(b.status ?? 0) as 0 | 1 | 2);
         const sch = !!b.isSchedule;
         setIsSchedule(sch);
         setScheduleLocal(sch ? toLocalDatetimeInput(b.scheduleTime) : "");
       } catch (e: any) {
-        toast.error(e?.message || "Could not load blog");
+        const msg = e?.response?.data?.message || e?.message || "Could not load blog";
+        toast.error(msg);
+        if (e?.response?.status === 401) {
+          localStorage.removeItem("token");
+          navigate("/login");
+        }
       } finally {
         setLoading(false);
       }
     };
     run();
-  }, [blogId, token]);
+  }, [blogId, token, navigate]);
 
-  // ----- Upload cover -----
+  // 💡 Reconcile selected author ONLY after:
+  //  - authors list is loaded AND
+  //  - we've fetched blogAuthorId (i.e., blogAuthorId !== undefined)
+  // Prefer blogAuthorId if it exists in the authors list; otherwise default to first.
+  useEffect(() => {
+    if (!authors.length) return;
+    if (blogAuthorId === undefined) return; // wait for blog fetch to finish
+
+    const blogIdInList = blogAuthorId
+      ? authors.some(a => String(a._id) === String(blogAuthorId))
+      : false;
+
+    if (blogIdInList) {
+      setAuthorId(String(blogAuthorId));
+    } else if (!authorId) {
+      setAuthorId(String(authors[0]._id));
+    }
+  }, [authors, blogAuthorId]); // intentionally not depending on authorId to avoid loops
+
+  // Upload cover
   const onUploadCover = async (file: File) => {
     try {
       const fd = new FormData();
       fd.append("file", file);
-      const res = await fetch(UPLOAD_URL, { method: "POST", body: fd, headers: { Authorization: `Bearer ${token || ""}` } });
-      if (!res.ok) throw new Error("Upload failed");
-      const data = await res.json();
+
+      const res = await httpFile.post("/uploadFile", fd, {
+        headers: { Authorization: `Bearer ${token || ""}` },
+      });
+
+      const data = res.data;
       let url: string =
         (data?.data && (typeof data.data === "string" ? data.data : data.data?.url)) ||
         data?.url || data?.filePath || data?.path || "";
       if (!url) throw new Error("No URL in response");
-      if (!/^https?:\/\//i.test(url)) url = `https://aibackend.todaystrends.site${url.startsWith("/") ? "" : "/"}${url}`;
-      setCoverUrl(url);
+
+      setCoverUrl(makeAbsUrl(url));
       toast.success("Cover image uploaded");
     } catch (e: any) {
-      toast.error(e?.message || "Cover upload failed");
+      toast.error(e?.response?.data?.message || e?.message || "Cover upload failed");
     }
   };
 
-  // ----- Generate meta -----
+  // Meta generators
   const doGenerateMetaTitle = async () => {
     if (!title.trim()) return toast.error("Enter the blog title first");
     try {
-      const res = await fetch(`${BASE_URL}/blog/meta-title`, {
-        method: "POST",
-        headers: authHeaders,
-        body: JSON.stringify({ title, type }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.message || "Failed");
+      const res = await httpFile.post(
+        "/blog/meta-title",
+        { title, type },
+        { headers: authHeaders }
+      );
+      const json = res.data;
       setMetaTitle(json.data || "");
       toast.success("Meta title generated");
     } catch (e: any) {
-      toast.error(e?.message || "Generation failed");
+      toast.error(e?.response?.data?.message || e?.message || "Generation failed");
     }
   };
 
   const doGenerateMetaKeywords = async () => {
     if (!title.trim()) return toast.error("Enter the blog title first");
     try {
-      const res = await fetch(`${BASE_URL}/blog/meta-keywords`, {
-        method: "POST",
-        headers: authHeaders,
-        body: JSON.stringify({ title, type, count: 8 }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.message || "Failed");
+      const res = await httpFile.post(
+        "/blog/meta-keywords",
+        { title, type, count: 8 },
+        { headers: authHeaders }
+      );
+      const json = res.data;
       setMetaKeywords((json.data || []).join(", "));
       toast.success("Meta keywords generated");
     } catch (e: any) {
-      toast.error(e?.message || "Generation failed");
+      toast.error(e?.response?.data?.message || e?.message || "Generation failed");
     }
   };
 
   const doGenerateMetaDescription = async () => {
     if (!title.trim()) return toast.error("Enter the blog title first");
     try {
-      const res = await fetch(`${BASE_URL}/blog/meta-description`, {
-        method: "POST",
-        headers: authHeaders,
-        body: JSON.stringify({ title, type }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.message || "Failed");
+      const res = await httpFile.post(
+        "/blog/meta-description",
+        { title, type },
+        { headers: authHeaders }
+      );
+      const json = res.data;
       setMetaDescription(json.data || "");
       toast.success("Meta description generated");
     } catch (e: any) {
-      toast.error(e?.message || "Generation failed");
+      toast.error(e?.response?.data?.message || e?.message || "Generation failed");
     }
   };
 
-  // ----- Save (PATCH updateBlog/:id using FormData) -----
+  // Save
   const handleUpdate = async () => {
     if (!blogId) return toast.error("Missing blog id");
     if (!title.trim()) return toast.error("Please enter a title");
+    if (!authorId) return toast.error("Please select an author");
     if (!token) return toast.error("Missing auth token");
 
-    // schedule ms (if provided)
     let scheduleTime: number | undefined;
     if (isSchedule && scheduleLocal) {
       const ms = new Date(scheduleLocal).getTime();
@@ -234,7 +291,9 @@ export default function EditBlogPost() {
     form.append("content", content);
     form.append("type", type);
     if (projectId) form.append("projectId", projectId);
-    if (authorName.trim()) form.append("authorName", authorName.trim());
+
+    // ✅ send authorId (not authorName)
+    form.append("authorId", authorId);
 
     if (metaTitle.trim()) form.append("meta_title", metaTitle.trim());
     if (metaDescription.trim()) form.append("meta_description", metaDescription.trim());
@@ -251,17 +310,17 @@ export default function EditBlogPost() {
     }
 
     try {
-      const res = await fetch(`${BASE_URL}/updateBlog/${blogId}`, {
-        method: "PATCH",
-        headers: { Authorization: `Bearer ${token}` }, // no Content-Type for FormData
-        body: form,
+      await httpFile.post(`/updateBlog/${blogId}`, form, {
+        headers: { Authorization: `Bearer ${token}` },
       });
-      const json = await res.json().catch(() => ({} as any));
-      if (!res.ok) throw new Error(json?.message || "Update failed");
       toast.success("Blog updated");
       navigate("/admin/blog-posts", { state: { projectId } });
     } catch (e: any) {
-      toast.error(e?.message || "Update failed");
+      toast.error(e?.response?.data?.message || e?.message || "Update failed");
+      if (e?.response?.status === 401) {
+        localStorage.removeItem("token");
+        navigate("/login");
+      }
     }
   };
 
@@ -327,17 +386,28 @@ export default function EditBlogPost() {
                   ))}
                 </SelectContent>
               </Select>
-
             </div>
+
             <div>
-              <Label htmlFor="author">Author Name</Label>
-              <Input
-                id="author"
-                value={authorName}
-                onChange={(e) => setAuthorName(e.target.value)}
-                placeholder="Author"
-                disabled={loading}
-              />
+              <Label htmlFor="author">Author</Label>
+              <Select value={authorId} onValueChange={setAuthorId} disabled={loading || !authors.length}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select author" />
+                </SelectTrigger>
+                <SelectContent>
+                  {authors.length > 0 ? (
+                    authors
+                      .filter(a => a && a._id && a.name)
+                      .map(a => (
+                        <SelectItem key={a._id} value={String(a._id)}>
+                          {a.name}
+                        </SelectItem>
+                      ))
+                  ) : (
+                    <div className="px-3 py-2 text-sm text-muted-foreground">No authors found</div>
+                  )}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
@@ -384,6 +454,8 @@ export default function EditBlogPost() {
               </div>
             </div>
           </div>
+
+          {/* Preview */}
           {coverUrl && (
             <div className="mt-2">
               <img src={coverUrl} alt={coverAlt || ""} className="max-h-48 rounded-md border" />
@@ -438,7 +510,7 @@ export default function EditBlogPost() {
                 id="metaKeys"
                 value={metaKeywords}
                 onChange={(e) => setMetaKeywords(e.target.value)}
-                placeholder='keyword1, keyword2'
+                placeholder="keyword1, keyword2"
                 disabled={loading}
               />
               <Button type="button" variant="outline" onClick={doGenerateMetaKeywords} disabled={loading}>

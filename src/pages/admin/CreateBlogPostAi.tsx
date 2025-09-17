@@ -13,21 +13,19 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem
+} from "@/components/ui/select";
 import { Check, ChevronLeft, ChevronRight, Search, Sparkles } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { httpFile } from "../../config.js";
 
 type TreeNode = { name: string; id: string; children: TreeNode[] };
-
-
-
-const STYLE_MAP: Record<(typeof BLOG_TYPES)[number]["id"], string> = {
-  how: "how to",
-  best: "best",
-  comparison: "comparison",
-  what: "what",
-
-};
+type AuthorItem = { _id: string; name: string };
 
 const BLOG_TYPES = [
   { id: "how", label: "How-To", note: "Step-by-step guides" },
@@ -36,6 +34,12 @@ const BLOG_TYPES = [
   { id: "what", label: "What", note: "What is the reason or use of…" },
 ] as const;
 
+const STYLE_MAP: Record<(typeof BLOG_TYPES)[number]["id"], string> = {
+  how: "how to",
+  best: "best",
+  comparison: "comparison",
+  what: "what",
+};
 
 export default function AiBlogsWizard() {
   const navigate = useNavigate();
@@ -65,8 +69,10 @@ export default function AiBlogsWizard() {
   // Step 4: titles (editable)
   const [titles, setTitles] = useState<string[]>([]);
 
-  // Step 5: finish -> create blogs
-  const [author, setAuthor] = useState<string>("exz");
+  // Step 5: authors dropdown (+ submit)
+  const [authors, setAuthors] = useState<AuthorItem[]>([]);
+  const [authorId, setAuthorId] = useState<string>("");
+
   const [submitLoading, setSubmitLoading] = useState(false);
   const [done, setDone] = useState(false);
 
@@ -75,20 +81,40 @@ export default function AiBlogsWizard() {
   const totalSteps = 5;
   const stepTitle = useMemo(() => {
     switch (step) {
-      case 1:
-        return "Choose Blog Type";
-      case 2:
-        return "Choose Locations (optional)";
-      case 3:
-        return "How Many Titles?";
-      case 4:
-        return "Review & Edit Titles";
-      case 5:
-        return "Generate Blogs";
-      default:
-        return "AI Blog Generator";
+      case 1: return "Choose Blog Type";
+      case 2: return "Choose Locations (optional)";
+      case 3: return "How Many Titles?";
+      case 4: return "Review & Edit Titles";
+      case 5: return "Generate Blogs";
+      default: return "AI Blog Generator";
     }
   }, [step]);
+
+  // ----- load authors for step 5 -----
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await httpFile.get<{ data: AuthorItem[] }>("/fetch_authors", {
+          headers: { Authorization: `Bearer ${token || ""}` },
+        });
+        const list = Array.isArray(res.data?.data) ? res.data.data : [];
+        setAuthors(list);
+        // default to the first one to avoid empty Select value later
+        if (!authorId && list.length) {
+          setAuthorId(String(list[0]._id));
+        }
+      } catch (err: any) {
+        console.error("fetch_authors error:", err);
+        if (err?.response?.status === 401) {
+          toast({ title: "Session expired", description: "Please login", variant: "destructive" });
+          localStorage.removeItem("token");
+          navigate("/login");
+        } else {
+          toast({ title: "Failed to load authors", description: err?.response?.data?.message || "Please try again.", variant: "destructive" });
+        }
+      }
+    })();
+  }, [navigate, token]); // don't include authorId to avoid loops
 
   // ----- load locations tree (step 2) -----
   useEffect(() => {
@@ -247,11 +273,7 @@ export default function AiBlogsWizard() {
   // ----- Navigation -----
   const next = async () => {
     if (step === 1 && !blogType) {
-      toast({
-        title: "Pick a type",
-        description: "Please choose one blog type to continue.",
-        variant: "destructive"
-      });
+      toast({ title: "Pick a type", description: "Please choose one blog type to continue.", variant: "destructive" });
       return;
     }
     if (step === 2) {
@@ -263,33 +285,21 @@ export default function AiBlogsWizard() {
     if (step === 3) {
       if (mode === "auto") {
         if (!count || count < 1 || count > 10) {
-          toast({
-            title: "Missing / Invalid count",
-            description: "Set a count between 1 and 10.",
-            variant: "destructive"
-          });
+          toast({ title: "Missing / Invalid count", description: "Set a count between 1 and 10.", variant: "destructive" });
           return;
         }
         const ok = await requestTitlesFromApi(count);
         if (!ok) return;
       } else {
         if (!manualInput.trim()) {
-          toast({
-            title: "Missing titles",
-            description: "Enter at least one title.",
-            variant: "destructive"
-          });
+          toast({ title: "Missing titles", description: "Enter at least one title.", variant: "destructive" });
           return;
         }
         fromManual();
       }
     }
     if (step === 4 && !titles.length) {
-      toast({
-        title: "No titles",
-        description: "Add at least one title.",
-        variant: "destructive"
-      });
+      toast({ title: "No titles", description: "Add at least one title.", variant: "destructive" });
       return;
     }
     setStep(Math.min(step + 1, totalSteps));
@@ -300,8 +310,7 @@ export default function AiBlogsWizard() {
   // ----- Regenerate helpers -----
   const regenerateOne = (i: number) => {
     if (!blogType) return;
-    const withLoc =
-      locationBased && locationNames.length ? ` in ${locationNames[i % locationNames.length]}` : "";
+    const withLoc = locationBased && locationNames.length ? ` in ${locationNames[i % locationNames.length]}` : "";
     setTitles(prev => {
       const copy = [...prev];
       copy[i] = `New ${STYLE_MAP[blogType]} Title${withLoc} #${i + 1}`;
@@ -322,30 +331,22 @@ export default function AiBlogsWizard() {
     setTitles(prev => [...prev, `New Title ${prev.length + 1}`]);
   };
 
-  // ----- Finish: call create_ai_blog with titles[] -----
+  // ----- Finish: call create_ai_blog with titles[] + authorId -----
   const finish = async () => {
     if (!projectId) {
-      toast({
-        title: "Missing projectId",
-        description: "Cannot generate without projectId.",
-        variant: "destructive"
-      });
+      toast({ title: "Missing projectId", description: "Cannot generate without projectId.", variant: "destructive" });
       return;
     }
     if (!titles.length) {
-      toast({
-        title: "No titles",
-        description: "Add at least one title.",
-        variant: "destructive"
-      });
+      toast({ title: "No titles", description: "Add at least one title.", variant: "destructive" });
       return;
     }
     if (!blogType) {
-      toast({
-        title: "Type missing",
-        description: "Please choose a blog type.",
-        variant: "destructive"
-      });
+      toast({ title: "Type missing", description: "Please choose a blog type.", variant: "destructive" });
+      return;
+    }
+    if (!authorId) {
+      toast({ title: "Pick an author", description: "Please select an author.", variant: "destructive" });
       return;
     }
 
@@ -353,11 +354,10 @@ export default function AiBlogsWizard() {
     try {
       const payload = {
         projectId,
-        title: titles,                     // array of titles
-        type: blogType,                    // ✅ send the id ("how", "whychoose", etc.)
-        authorName: author || undefined
+        title: titles,     // array of titles
+        type: blogType,    // id: "how" | "best" | ...
+        authorId          // ✅ send authorId instead of authorName
       };
-
 
       const res = await httpFile.post("/create_ai_blog", payload, {
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }
@@ -586,13 +586,32 @@ export default function AiBlogsWizard() {
                 <div className="grid sm:grid-cols-2 gap-3">
                   <div className="space-y-2">
                     <Label htmlFor="author">Author (for all blogs)</Label>
-                    <Input
-                      id="author"
-                      value={author}
-                      onChange={e => setAuthor(e.target.value)}
-                      placeholder="e.g., exz"
-                    />
+                    <Select
+                      value={authorId}
+                      onValueChange={setAuthorId}
+                      disabled={!authors.length}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select author" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {authors.length ? (
+                          authors
+                            .filter(a => a && a._id && a.name)
+                            .map(a => (
+                              <SelectItem key={a._id} value={String(a._id)}>
+                                {a.name}
+                              </SelectItem>
+                            ))
+                        ) : (
+                          <SelectItem value="__noauthors" disabled>
+                            No authors found
+                          </SelectItem>
+                        )}
+                      </SelectContent>
+                    </Select>
                   </div>
+
                   <div className="space-y-2">
                     <Label>Type sent to API</Label>
                     <Input
@@ -603,7 +622,6 @@ export default function AiBlogsWizard() {
                           : ""
                       }
                     />
-
                   </div>
                 </div>
 
