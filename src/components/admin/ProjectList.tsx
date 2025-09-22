@@ -34,8 +34,8 @@ export function ProjectList() {
 
   // Fetch projects from API with pagination and search
 useEffect(() => {
-  const socket = io("http://localhost:1111");
-  // const socket = io("https://aibackend.todaystrends.site");
+  // const socket = io("http://localhost:1111");
+  const socket = io("https://aibackend.todaystrends.site");
 
   const fetchProjects = async () => {
     try {

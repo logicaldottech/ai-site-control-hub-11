@@ -13,11 +13,14 @@ import { Loader2, Plus, ChevronLeft, ChevronRight } from "lucide-react";
 interface Blog {
   _id: string;
   title: string;
-  content: string;
-  status: string;
+  type: string;
+  status: number; // numeric status
   createdAt: string;
   updatedAt: string;
+  content?: string;
 }
+
+
 
 interface FakeReviewFormData {
   count: string;
@@ -47,20 +50,15 @@ export function FakeReviewsManagement() {
     try {
       setLoading(true);
       const token = localStorage.getItem("token");
-      
+
       const response = await http.get("/listBlogs", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-        params: {
-          page: currentPage,
-          limit: limit,
-        },
+        headers: { Authorization: `Bearer ${token}` },
+        params: { page: currentPage, limit },
       });
 
-      if (response.data.success) {
-        setBlogs(response.data.data.blogs || []);
-        setTotalPages(Math.ceil((response.data.data.total || 0) / limit));
+      if (response.data && response.data.data) {
+        setBlogs(response.data.data.items || []);
+        setTotalPages(response.data.data.pages || 1);
       } else {
         toast.error("Failed to fetch blogs");
       }
@@ -72,6 +70,7 @@ export function FakeReviewsManagement() {
     }
   };
 
+
   const handleGenerateReviews = (blog: Blog) => {
     setSelectedBlog(blog);
     setFormData({ count: "", exampleNames: "" });
@@ -80,7 +79,7 @@ export function FakeReviewsManagement() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!selectedBlog || !formData.count || !formData.exampleNames) {
       toast.error("Please fill in all required fields");
       return;
@@ -89,14 +88,14 @@ export function FakeReviewsManagement() {
     try {
       setSubmitting(true);
       const token = localStorage.getItem("token");
-      
+
       const formDataToSend = new FormData();
       formDataToSend.append("blogId", selectedBlog._id);
       formDataToSend.append("count", formData.count);
       formDataToSend.append("exampleNames", formData.exampleNames);
 
       // Use webapp/v1 for this API as shown in the curl
-      const response = await http.post("/webapp/v1/add_fake_reviews", formDataToSend, {
+      const response = await http.post("/add_fake_reviews", formDataToSend, {
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "multipart/form-data",
@@ -146,9 +145,10 @@ export function FakeReviewsManagement() {
               <div className="flex items-center justify-between">
                 <CardTitle className="text-lg">{blog.title}</CardTitle>
                 <div className="flex items-center gap-2">
-                  <Badge variant={blog.status === "active" ? "default" : "secondary"}>
-                    {blog.status}
+                  <Badge variant={blog.status === 1 ? "default" : "secondary"}>
+                    {blog.status === 1 ? "Active" : blog.status === 0 ? "Pending" : "Inactive"}
                   </Badge>
+
                   <Dialog open={isDialogOpen && selectedBlog?._id === blog._id} onOpenChange={setIsDialogOpen}>
                     <DialogTrigger asChild>
                       <Button
@@ -174,7 +174,7 @@ export function FakeReviewsManagement() {
                             className="bg-muted"
                           />
                         </div>
-                        
+
                         <div>
                           <Label htmlFor="count">Count *</Label>
                           <Input
@@ -239,8 +239,11 @@ export function FakeReviewsManagement() {
             </CardHeader>
             <CardContent>
               <p className="text-sm text-muted-foreground line-clamp-2">
-                {blog.content.replace(/<[^>]*>/g, "").substring(0, 150)}...
+                {blog.content
+                  ? blog.content.replace(/<[^>]*>/g, "").substring(0, 150) + "..."
+                  : "No description available"}
               </p>
+
               <div className="flex gap-4 mt-2 text-xs text-muted-foreground">
                 <span>Created: {new Date(blog.createdAt).toLocaleDateString()}</span>
                 <span>Updated: {new Date(blog.updatedAt).toLocaleDateString()}</span>
@@ -262,11 +265,11 @@ export function FakeReviewsManagement() {
             <ChevronLeft className="h-4 w-4" />
             Previous
           </Button>
-          
+
           <span className="px-3 py-1 text-sm">
             Page {currentPage} of {totalPages}
           </span>
-          
+
           <Button
             variant="outline"
             size="sm"
