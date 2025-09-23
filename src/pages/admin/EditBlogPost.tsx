@@ -75,8 +75,7 @@ export default function EditBlogPost() {
   const [authors, setAuthors] = useState<AuthorItem[]>([]);
   const [authorId, setAuthorId] = useState<string>("");
 
-  // Key fix: remember what the blog says its author is.
-  // undefined = not fetched yet, string = id, null = explicitly none.
+  // Remember blog's saved author id.
   const [blogAuthorId, setBlogAuthorId] = useState<string | null | undefined>(undefined);
 
   // Meta
@@ -101,7 +100,7 @@ export default function EditBlogPost() {
     [token]
   );
 
-  // Load authors (do NOT pick a default here to avoid clobbering blog's saved author)
+  // Load authors
   useEffect(() => {
     (async () => {
       try {
@@ -176,10 +175,7 @@ export default function EditBlogPost() {
     run();
   }, [blogId, token, navigate]);
 
-  // 💡 Reconcile selected author ONLY after:
-  //  - authors list is loaded AND
-  //  - we've fetched blogAuthorId (i.e., blogAuthorId !== undefined)
-  // Prefer blogAuthorId if it exists in the authors list; otherwise default to first.
+  // Reconcile author selection once both authors and blogAuthorId are known
   useEffect(() => {
     if (!authors.length) return;
     if (blogAuthorId === undefined) return; // wait for blog fetch to finish
@@ -193,7 +189,7 @@ export default function EditBlogPost() {
     } else if (!authorId) {
       setAuthorId(String(authors[0]._id));
     }
-  }, [authors, blogAuthorId]); // intentionally not depending on authorId to avoid loops
+  }, [authors, blogAuthorId]); // do not depend on authorId to avoid loops
 
   // Upload cover
   const onUploadCover = async (file: File) => {
@@ -285,15 +281,19 @@ export default function EditBlogPost() {
       .map(s => s.trim())
       .filter(Boolean);
 
+    // Look up authorName for backend compatibility
+    const authorName = authors.find(a => String(a._id) === String(authorId))?.name || "";
+
     const form = new FormData();
     form.append("title", title.trim());
     form.append("information", information.trim());
-    form.append("content", content);
+    form.append("content", content); // Send full HTML
     form.append("type", type);
     if (projectId) form.append("projectId", projectId);
 
-    // ✅ send authorId (not authorName)
-    form.append("authorId", authorId);
+    // ✅ send both, to satisfy either backend contract
+    if (authorId) form.append("authorId", authorId);
+    if (authorName) form.append("authorName", authorName);
 
     if (metaTitle.trim()) form.append("meta_title", metaTitle.trim());
     if (metaDescription.trim()) form.append("meta_description", metaDescription.trim());
@@ -310,6 +310,7 @@ export default function EditBlogPost() {
     }
 
     try {
+      // ✅ Use the exact endpoint format your cURL uses
       await httpFile.post(`/updateBlog/${blogId}`, form, {
         headers: { Authorization: `Bearer ${token}` },
       });

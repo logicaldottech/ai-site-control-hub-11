@@ -1,5 +1,6 @@
 // components/editor/RichTextEditor.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
+import type React from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -7,24 +8,16 @@ import {
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
   Link as LinkIcon, Unlink, Undo2, Redo2, Eraser,
   Image as ImageIcon, Heading1, Heading2, Heading3,
-  Minus, Eye, Palette, ChevronLeft, ChevronRight,
+  Minus, Palette, ChevronLeft, ChevronRight, Replace as ReplaceIcon
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { useEditor, EditorContent } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
-import Underline from "@tiptap/extension-underline";
-import Image from "@tiptap/extension-image";
-import Link from "@tiptap/extension-link";
-import TextAlign from "@tiptap/extension-text-align";
-import Color from "@tiptap/extension-color";
-import { TextStyle } from "@tiptap/extension-text-style";
-
-export type RteTab = "visual" | "html" | "preview";
+export type RteTab = "visual" | "html";
 
 export type RichTextEditorProps = {
+  /** Full HTML doc: <!doctype ...><html ...><head>...</head><body>...</body></html> */
   value?: string;
-  onChange?: (html: string) => void;
+  onChange?: (fullHtml: string) => void;
   initialHTML?: string;
   uploadUrl?: string;
   disabled?: boolean;
@@ -33,7 +26,37 @@ export type RichTextEditorProps = {
 
 const DEFAULT_UPLOAD_URL = "https://aibackend.todaystrends.site/admin/v1/uploadFile";
 
-/* ---------- helpers (exactly as before) ---------- */
+/* ---------------------- Full-doc helpers ---------------------- */
+function splitHeadBody(fullHtml: string) {
+  try {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(fullHtml || "", "text/html");
+    const head = doc.head?.innerHTML ?? "";
+    const body = doc.body?.innerHTML ?? "";
+    const doctype = doc.doctype ? `<!doctype ${doc.doctype.name}>` : "<!doctype html>";
+    const htmlAttrs =
+      doc.documentElement?.getAttributeNames?.()
+        ?.map((n) => `${n}="${doc.documentElement.getAttribute(n) ?? ""}"`)
+        .join(" ") || 'lang="en"';
+    return { doctype, htmlAttrs, headHtml: head, bodyHtml: body };
+  } catch {
+    const headMatch = fullHtml.match(/<head[^>]*>([\s\S]*?)<\/head>/i);
+    const bodyMatch = fullHtml.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+    const doctypeMatch = fullHtml.match(/<!doctype[^>]*>/i);
+    const htmlAttrsMatch = fullHtml.match(/<html([^>]*)>/i);
+    return {
+      doctype: doctypeMatch?.[0] || "<!doctype html>",
+      htmlAttrs: (htmlAttrsMatch?.[1] || ' lang="en"').trim() || 'lang="en"',
+      headHtml: headMatch?.[1] || "",
+      bodyHtml: bodyMatch?.[1] || fullHtml || "",
+    };
+  }
+}
+function joinHeadBody(doctype: string, htmlAttrs: string, headHtml: string, bodyHtml: string) {
+  return `${doctype || "<!doctype html>"}\n<html ${htmlAttrs || 'lang="en"'}>\n<head>\n${headHtml || ""}\n</head>\n<body>\n${bodyHtml || ""}\n</body>\n</html>`;
+}
+
+/* ---------------------- Editor helpers ---------------------- */
 function styleFromImgClass(cls: string): string {
   const tokens = (cls || "").split(/\s+/).filter(Boolean);
   const has = (t: string) => tokens.includes(t);
@@ -48,24 +71,6 @@ function styleFromImgClass(cls: string): string {
   return style;
 }
 
-const FloatableImage = Image.extend({
-  addAttributes() {
-    return {
-      ...this.parent?.(),
-      class: {
-        default: null,
-        parseHTML: (el) => el.getAttribute("class"),
-        renderHTML: (attrs) => (attrs.class ? { class: attrs.class } : {}),
-      },
-      style: {
-        default: null,
-        parseHTML: (el) => el.getAttribute("style"),
-        renderHTML: (attrs) => (attrs.style ? { style: attrs.style } : {}),
-      },
-    };
-  },
-});
-
 async function uploadImageToUrl(file: File, uploadUrl: string): Promise<string> {
   const fd = new FormData();
   fd.append("file", file);
@@ -73,14 +78,48 @@ async function uploadImageToUrl(file: File, uploadUrl: string): Promise<string> 
   if (!res.ok) throw new Error((await res.text().catch(() => "")) || "Upload failed");
   const data = await res.json().catch(() => ({} as any));
   let url: string =
-    (data?.data && (typeof data.data === "string" ? data.data : data.data?.url)) ||
+    (data?.data && (typeof data.data === "string" ? data.data : (data.data?.url || data.data?.path || data.data?.filePath))) ||
     data?.url || data?.filePath || data?.path || "";
   if (!url) throw new Error("No URL returned from upload API");
-  if (!/^https?:\/\//i.test(url)) url = `https://aibackend.todaystrends.site${url.startsWith("/") ? "" : "/"}${url}`;
+  // Normalize to absolute https
+  if (!/^https?:\/\//i.test(url)) {
+    const path = url.startsWith("/") ? url : `/${url}`;
+    url = `https://aibackend.todaystrends.site${path}`;
+  }
   return url;
 }
 
-/* ---------- component ---------- */
+function rgbToHex(color: string): string {
+  if (color?.startsWith("#")) return color;
+  const match = color?.match?.(/\d+/g);
+  if (!match) return "#000000";
+  const [r, g, b] = match.map(Number);
+  return "#" + [r, g, b].map((x) => x.toString(16).padStart(2, "0")).join("");
+}
+
+function uid() {
+  return "tmp-" + Math.random().toString(36).slice(2, 9) + Date.now().toString(36);
+}
+
+function ensureImageUrlLoads(url: string, timeoutMs = 10000): Promise<boolean> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const done = (ok: boolean) => {
+      clearTimeout(timer);
+      img.onload = null;
+      img.onerror = null;
+      resolve(ok);
+    };
+    const bust = url + (url.includes("?") ? "&" : "?") + "__r=" + Date.now();
+    const timer = setTimeout(() => done(false), timeoutMs);
+    img.crossOrigin = "anonymous";
+    img.onload = () => done(true);
+    img.onerror = () => done(false);
+    img.src = bust;
+  });
+}
+
+/* ---------------------- Component ---------------------- */
 export function RichTextEditor({
   value,
   onChange,
@@ -89,137 +128,535 @@ export function RichTextEditor({
   disabled = false,
   height = 420,
 }: RichTextEditorProps) {
+  // Split incoming full document
+  const initialFull =
+    value ??
+    initialHTML ??
+    "<!doctype html><html lang=\"en\"><head></head><body><p>Start writing…</p></body></html>";
+  const init = splitHeadBody(initialFull);
+
+  const [doctype, setDoctype] = useState(init.doctype);
+  const [htmlAttrs, setHtmlAttrs] = useState(init.htmlAttrs);
+  const [headHtml, setHeadHtml] = useState(init.headHtml);
+  const [bodyHtml, setBodyHtml] = useState(init.bodyHtml);
+
+  // Track last full we emitted to avoid echo loops
+  const lastPushedRef = useRef<string | null>(null);
+
+  // Live edit shield (ignore external value updates while actively editing)
+  const [isLiveEditing, setIsLiveEditing] = useState(false);
+  const liveEditTimerRef = useRef<number | null>(null);
+  const bumpLiveEditing = () => {
+    setIsLiveEditing(true);
+    if (liveEditTimerRef.current) window.clearTimeout(liveEditTimerRef.current);
+    liveEditTimerRef.current = window.setTimeout(() => setIsLiveEditing(false), 1200);
+  };
+
+  // If parent updates `value`, accept only when not live-editing (in visual)
   const [activeTab, setActiveTab] = useState<RteTab>("visual");
-  const [htmlContent, setHtmlContent] = useState<string>(value ?? initialHTML ?? "<p>Start writing…</p>");
+  useEffect(() => {
+    if (typeof value !== "string") return;
+    if (isLiveEditing && activeTab === "visual") return; // shield
+    const currentFull = joinHeadBody(doctype, htmlAttrs, headHtml, bodyHtml);
+    if (value === lastPushedRef.current || value === currentFull) return;
+    const s = splitHeadBody(value);
+    setDoctype(s.doctype);
+    setHtmlAttrs(s.htmlAttrs);
+    setHeadHtml(s.headHtml);
+    setBodyHtml(s.bodyHtml);
+  }, [value]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // UI state
   const [textColor, setTextColor] = useState("#000000");
   const [isUploading, setIsUploading] = useState(false);
-
   const [showLinkInput, setShowLinkInput] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
 
+  // Toolbar states
+  const [currentFormat, setCurrentFormat] = useState("p");
+  const [currentAlign, setCurrentAlign] = useState("left");
+  const [isBold, setIsBold] = useState(false);
+  const [isItalic, setIsItalic] = useState(false);
+  const [isUnderline, setIsUnderline] = useState(false);
+  const [isBullet, setIsBullet] = useState(false);
+  const [isOrdered, setIsOrdered] = useState(false);
+  const [isLink, setIsLink] = useState(false);
+  const [imageNode, setImageNode] = useState<HTMLImageElement | null>(null);
+
+  // HTML tab draft buffer (controlled)
+  const [htmlDraft, setHtmlDraft] = useState<string>(
+    joinHeadBody(doctype, htmlAttrs, headHtml, bodyHtml)
+  );
+
+
+  // While editing in HTML tab, live-emit the draft so parent can save it
+  useEffect(() => {
+    if (activeTab !== "html") return;
+    const full = htmlDraft;
+    lastPushedRef.current = full;
+    onChange?.(full);
+  }, [htmlDraft, activeTab, onChange]);
+
+
+  // Keep draft in sync when parts change, except while actively typing in HTML tab
+
+
+
+  useEffect(() => {
+    if (activeTab === "html") return;
+    setHtmlDraft(joinHeadBody(doctype, htmlAttrs, headHtml, bodyHtml));
+  }, [doctype, htmlAttrs, headHtml, bodyHtml, activeTab]);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const lastPushedRef = useRef<string | null>(null);
+  const replaceInputRef = useRef<HTMLInputElement>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const changeOriginRef = useRef<"visual" | "html" | null>(null);
 
-  useEffect(() => {
-    const style = document.createElement("style");
-    style.innerHTML = `
-      .tiptap, .post-preview { min-height: ${height}px; }
-      .tiptap h1, .post-preview h1 { font-size: 1.875rem; line-height: 2.25rem; font-weight: 700; margin: 1rem 0 .5rem; }
-      .tiptap h2, .post-preview h2 { font-size: 1.5rem; line-height: 2rem; font-weight: 700; margin: .875rem 0 .5rem; }
-      .tiptap h3, .post-preview h3 { font-size: 1.25rem; line-height: 1.75rem; font-weight: 600; margin: .75rem 0 .5rem; }
-      .tiptap ul, .post-preview ul { list-style: disc; padding-left: 1.5rem; }
-      .tiptap ol, .post-preview ol { list-style: decimal; padding-left: 1.5rem; }
-      .tiptap::after, .post-preview::after { content:""; display:block; clear:both; }
+  const getIdoc = () => iframeRef.current?.contentDocument || null;
+  const getRoot = () => getIdoc()?.getElementById("root") || null;
 
-      /* ensure links are visibly styled in editor + preview */
-      .tiptap a, .post-preview a { text-decoration: underline; color: #2563eb; cursor: pointer; }
-      .tiptap a:hover, .post-preview a:hover { text-decoration: underline; }
-      .tiptap a:visited, .post-preview a:visited { color: #7c3aed; }
-    `;
-    document.head.appendChild(style);
-    return () => style.remove();
-  }, [height]);
-
-
-  const editor = useEditor({
-    extensions: [
-      StarterKit.configure({ bulletList: { keepMarks: true }, orderedList: { keepMarks: true } }),
-      Underline,
-      FloatableImage.configure({ inline: false }),
-      Link.configure({
-        autolink: true,
-        linkOnPaste: true,
-        openOnClick: true,
-        HTMLAttributes: {
-          target: "_blank",
-          rel: "noopener noreferrer nofollow",
-        },
-      }),
-      TextStyle,
-      Color,
-      TextAlign.configure({ types: ["heading", "paragraph"] }),
-    ],
-    content: htmlContent,
-    editable: !disabled,
-    onUpdate: ({ editor }) => {
-      const html = editor.getHTML();
-      setHtmlContent(html);
-      onChange?.(html);
-    },
-  });
-
-  // keep toolbar state in sync
-  useEffect(() => {
-    if (!editor) return;
-    const sync = () => {
-      const current = (editor.getAttributes("textStyle")?.color as string) || "#000000";
-      setTextColor(current);
-    };
-    editor.on("selectionUpdate", sync);
-    editor.on("transaction", sync);
-    return () => {
-      editor.off("selectionUpdate", sync);
-      editor.off("transaction", sync);
-    };
-  }, [editor]);
-
-  // accept external value
-  useEffect(() => {
-    if (!editor) return;
-    if (typeof value !== "string") return;
-    if (value === lastPushedRef.current) return;
-    const current = editor.getHTML();
-    if (value !== current) {
-      editor.commands.setContent(value, false);
-
-      setHtmlContent(value);
-      lastPushedRef.current = value;
+  const commitFromIframe = () => {
+    const root = getRoot();
+    if (!root) return;
+    const html = root.innerHTML;
+    setBodyHtml((prev) => (prev === html ? prev : html));
+    const full = joinHeadBody(doctype, htmlAttrs, headHtml, html);
+    if (full !== lastPushedRef.current) {
+      lastPushedRef.current = full;
+      onChange?.(full);
     }
-  }, [value, editor]);
+  };
 
-  const imageSelected = !!editor?.isActive("image");
+  // Write iframe document
+  const writeIframeDoc = (head: string, body: string) => {
+    const typographyStyle = `
+      body:after { content:""; display:block; clear:both; }
+      h1 { font-size: 1.875rem; line-height: 2.25rem; font-weight: 700; margin: 1rem 0 .5rem; }
+      h2 { font-size: 1.5rem; line-height: 2rem; font-weight: 700; margin: .875rem 0 .5rem; }
+      h3 { font-size: 1.25rem; line-height: 1.75rem; font-weight: 600; margin: .75rem 0 .5rem; }
+      ul { list-style: disc; padding-left: 1.5rem; }
+      ol { list-style: decimal; padding-left: 1.5rem; }
+      a { text-decoration: underline; color: #2563eb; cursor: pointer; }
+      a:hover { text-decoration: underline; }
+      a:visited { color: #7c3aed; }
+      img { max-width: 100%; height: auto; display: block; }
+      img:focus { outline: 2px solid #60a5fa; }
+    `;
+    const docHtml = `${doctype || "<!doctype html>"}
+<html ${htmlAttrs || 'lang="en"'}>
+<head>
+<meta charset="utf-8">
+${head || ""}
+<style>body{padding:1rem;font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial,sans-serif;}</style>
+<style>${typographyStyle}</style>
+</head>
+<body>
+  <main id="root" contenteditable="${!disabled}">${body || ""}</main>
+  <script>
+    (function(){
+      const root = document.getElementById('root');
+      const send = () => parent.postMessage({ type: 'RTE_BODY_HTML', html: root.innerHTML }, '*');
+      root.addEventListener('input', send);
 
-  const cmd = useMemo(() => ({
-    h1: () => editor?.chain().focus().toggleHeading({ level: 1 }).run(),
-    h2: () => editor?.chain().focus().toggleHeading({ level: 2 }).run(),
-    h3: () => editor?.chain().focus().toggleHeading({ level: 3 }).run(),
-    bold: () => editor?.chain().focus().toggleBold().run(),
-    italic: () => editor?.chain().focus().toggleItalic().run(),
-    underline: () => editor?.chain().focus().toggleUnderline().run(),
-    bullet: () => editor?.chain().focus().toggleBulletList().run(),
-    ordered: () => editor?.chain().focus().toggleOrderedList().run(),
-    indent: () => editor?.chain().focus().sinkListItem("listItem").run(),
-    outdent: () => editor?.chain().focus().liftListItem("listItem").run(),
-    quote: () => editor?.chain().focus().toggleBlockquote().run(),
-    hr: () => editor?.chain().focus().setHorizontalRule().run(),
-    alignLeft: () => editor?.chain().focus().setTextAlign("left").run(),
-    alignCenter: () => editor?.chain().focus().setTextAlign("center").run(),
-    alignRight: () => editor?.chain().focus().setTextAlign("right").run(),
-    alignJustify: () => editor?.chain().focus().setTextAlign("justify").run(),
-    unlink: () => editor?.chain().focus().unsetLink().run(),
-    setColor: (c: string) => editor?.chain().focus().setColor(c).run(),
-    clear: () => editor?.chain().focus().unsetAllMarks().clearNodes().run(),
-    undo: () => editor?.chain().focus().undo().run(),
-    redo: () => editor?.chain().focus().redo().run(),
-    openLinkBox: () => {
-      if (!editor) return;
-      const existing = editor.getAttributes("link")?.href as string | undefined;
-      setLinkUrl(existing || "https://");
-      setShowLinkInput(true);
-      editor.chain().focus().run();
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [editor]);
+      const ping = () => parent.postMessage({ type: 'RTE_PING_EDIT' }, '*');
+      ['focusin','keydown','input','paste','drop','mouseup','click'].forEach(ev => {
+        root.addEventListener(ev, ping);
+      });
 
-  // --- image attribute helpers (alignment + sizing) ---
+      // Ensure clicking an image selects it clearly
+      root.addEventListener('click', (e) => {
+        const t = e.target;
+        if (t && t.tagName === 'IMG') {
+          try {
+            const sel = window.getSelection();
+            const r = document.createRange();
+            r.selectNode(t);
+            sel.removeAllRanges();
+            sel.addRange(r);
+          } catch {}
+        }
+      });
+
+      // Right-click replace image
+      root.addEventListener('contextmenu', (e) => {
+        const t = e.target;
+        if (t && t.tagName === 'IMG') {
+          e.preventDefault();
+          const id = (t as HTMLElement).getAttribute('data-temp-id') || null;
+          parent.postMessage({ type: 'RTE_REQ_REPLACE', imgIndexHint: null }, '*');
+        }
+      });
+    })();
+  </script>
+</body>
+</html>`;
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+    const idoc = iframe.contentDocument;
+    if (!idoc) return;
+    idoc.open();
+    idoc.write(docHtml);
+    idoc.close();
+  };
+
+  // Rebuild iframe only when switching to visual or structure changes (NOT bodyHtml)
+  useEffect(() => {
+    if (activeTab !== "visual") return;
+    writeIframeDoc(headHtml, bodyHtml);
+  }, [activeTab, headHtml, htmlAttrs, disabled, doctype]); // bodyHtml intentionally excluded
+
+  // Patch body without rewriting doc when body changes externally
+  useEffect(() => {
+    if (activeTab !== "visual") return;
+    if (changeOriginRef.current === "visual") return;
+    const root = getRoot();
+    if (root && root.innerHTML !== bodyHtml) {
+      root.innerHTML = bodyHtml;
+    }
+  }, [bodyHtml, activeTab]);
+
+  // Receive edits & pings & replace requests from iframe
+  useEffect(() => {
+    const handleMsg = (e: MessageEvent) => {
+      if (e?.data?.type === "RTE_PING_EDIT") {
+        bumpLiveEditing();
+        return;
+      }
+      if (e?.data?.type === "RTE_BODY_HTML") {
+        bumpLiveEditing();
+        changeOriginRef.current = "visual";
+        const html = String(e.data.html || "");
+        setBodyHtml((prev) => (prev === html ? prev : html));
+        const full = joinHeadBody(doctype, htmlAttrs, headHtml, html);
+        if (full !== lastPushedRef.current) {
+          lastPushedRef.current = full;
+          onChange?.(full);
+        }
+        requestAnimationFrame(() => {
+          changeOriginRef.current = null;
+        });
+      }
+      if (e?.data?.type === "RTE_REQ_REPLACE") {
+        // Right-click replace request -> open picker
+        if (imageNode) {
+          replaceInputRef.current?.click();
+        } else {
+          toast.message("Select an image first.");
+        }
+      }
+    };
+    window.addEventListener("message", handleMsg);
+    return () => window.removeEventListener("message", handleMsg);
+  }, [doctype, htmlAttrs, headHtml, onChange, imageNode]);
+
+  // Update toolbar states on selection change etc.
+  useEffect(() => {
+    if (activeTab !== "visual") return;
+    const idoc = getIdoc();
+    if (!idoc) return;
+
+    const updateToolbar = () => {
+      const doc = idoc as Document;
+      setIsBold(doc.queryCommandState("bold"));
+      setIsItalic(doc.queryCommandState("italic"));
+      setIsUnderline(doc.queryCommandState("underline"));
+      setIsBullet(doc.queryCommandState("insertUnorderedList"));
+      setIsOrdered(doc.queryCommandState("insertOrderedList"));
+      const format = (doc.queryCommandValue("formatBlock") || "p").toLowerCase();
+      setCurrentFormat(format);
+      if (doc.queryCommandState("justifyCenter")) setCurrentAlign("center");
+      else if (doc.queryCommandState("justifyRight")) setCurrentAlign("right");
+      else if (doc.queryCommandState("justifyFull")) setCurrentAlign("justify");
+      else setCurrentAlign("left");
+      const color = doc.queryCommandValue("foreColor") as string;
+      setTextColor(rgbToHex(color));
+      const linkHref = doc.queryCommandValue("createLink") as string;
+      setIsLink(!!linkHref);
+
+      // Detect selected image
+      let imgEl: HTMLImageElement | null = null;
+      const sel = doc.getSelection();
+      if (sel && sel.rangeCount > 0) {
+        const range = sel.getRangeAt(0);
+        let node: Node | null = range.commonAncestorContainer;
+        if (node && (node as Node).nodeType !== 1) node = (node as Node).parentNode;
+        const el = node as HTMLElement | null;
+        if (el?.tagName === "IMG") {
+          imgEl = el as HTMLImageElement;
+        } else {
+          imgEl = (el?.closest?.("img") as HTMLImageElement | null) || null;
+        }
+      }
+      setImageNode(imgEl);
+    };
+
+    idoc.addEventListener("selectionchange", updateToolbar);
+    idoc.addEventListener("keyup", updateToolbar);
+    idoc.addEventListener("mouseup", updateToolbar);
+    idoc.addEventListener("input", updateToolbar);
+    idoc.addEventListener("click", updateToolbar);
+    // Initial update
+    updateToolbar();
+    return () => {
+      idoc.removeEventListener("selectionchange", updateToolbar);
+      idoc.removeEventListener("keyup", updateToolbar);
+      idoc.removeEventListener("mouseup", updateToolbar);
+      idoc.removeEventListener("input", updateToolbar);
+      idoc.removeEventListener("click", updateToolbar);
+    };
+  }, [activeTab]);
+
+  // ---- Image insertion helpers (show image immediately, then swap to uploaded URL after it loads)
+  const insertTempImage = (file: File) => {
+    const idoc = getIdoc();
+    if (!idoc) return null;
+    const tempUrl = URL.createObjectURL(file);
+    const tempId = uid();
+    const cls = "img-block img-100";
+    const style = styleFromImgClass(cls);
+    const imgHtml = `<img src="${tempUrl}" data-temp-id="${tempId}" alt="${file.name}" class="${cls}" style="${style}">`;
+    idoc.execCommand("insertHTML", false, imgHtml);
+    // commit change so state syncs and selection can find the image
+    commitFromIframe();
+    return { tempUrl, tempId };
+  };
+
+  const replaceTempImage = (tempId: string, finalUrl: string, revokeUrl?: string) => {
+    const root = getRoot();
+    if (!root) return;
+    const el = root.querySelector(`img[data-temp-id="${tempId}"]`) as HTMLImageElement | null;
+    if (el) {
+      el.src = finalUrl;
+      el.removeAttribute("data-temp-id");
+    }
+    if (revokeUrl) URL.revokeObjectURL(revokeUrl);
+    commitFromIframe();
+  };
+
+  const replaceExistingImage = async (file: File) => {
+    const idoc = getIdoc();
+    if (!idoc || !imageNode) return;
+    // Insert temp preview in place of current selection image
+    const tempUrl = URL.createObjectURL(file);
+    const tempId = uid();
+    imageNode.setAttribute("data-temp-id", tempId);
+    imageNode.src = tempUrl;
+    commitFromIframe();
+
+    try {
+      setIsUploading(true);
+      const url = await uploadImageToUrl(file, uploadUrl);
+      const ok = await ensureImageUrlLoads(url);
+      if (ok) {
+        imageNode.src = url;
+        imageNode.removeAttribute("data-temp-id");
+        toast.success("Image replaced");
+      } else {
+        toast.error("Uploaded image not reachable yet. Keeping preview.");
+      }
+    } catch (err: any) {
+      toast.error(err?.message || "Replace failed");
+    } finally {
+      setIsUploading(false);
+      URL.revokeObjectURL(tempUrl);
+      commitFromIframe();
+    }
+  };
+
+  // Handle paste and drop for images
+  useEffect(() => {
+    if (activeTab !== "visual") return;
+    const idoc = getIdoc();
+    if (!idoc) return;
+
+    const handlePaste = async (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      const imageItems = Array.from(items).filter((item) => item.type.startsWith("image/"));
+      if (!imageItems.length) return;
+      e.preventDefault();
+      bumpLiveEditing();
+
+      for (const item of imageItems) {
+        const file = item.getAsFile();
+        if (!file) continue;
+        const temp = insertTempImage(file);
+        try {
+          setIsUploading(true);
+          const url = await uploadImageToUrl(file, uploadUrl);
+          const ok = await ensureImageUrlLoads(url);
+          if (ok) {
+            if (temp) replaceTempImage(temp.tempId, url, temp.tempUrl);
+            toast.success("Image added");
+          } else {
+            toast.error("Uploaded image not reachable yet. Keeping preview.");
+          }
+        } catch (err: any) {
+          toast.error(err?.message || "Upload failed");
+        } finally {
+          setIsUploading(false);
+        }
+      }
+    };
+
+    const handleDrop = async (e: DragEvent) => {
+      e.preventDefault();
+      bumpLiveEditing();
+      const files = Array.from(e.dataTransfer?.files || []);
+      const images = files.filter((f) => f.type.startsWith("image/"));
+      if (!images.length) return;
+      for (const file of images) {
+        const temp = insertTempImage(file);
+        try {
+          setIsUploading(true);
+          const url = await uploadImageToUrl(file, uploadUrl);
+          const ok = await ensureImageUrlLoads(url);
+          if (ok) {
+            if (temp) replaceTempImage(temp.tempId, url, temp.tempUrl);
+            toast.success("Image added");
+          } else {
+            toast.error("Uploaded image not reachable yet. Keeping preview.");
+          }
+        } catch (err: any) {
+          toast.error(err?.message || "Upload failed");
+        } finally {
+          setIsUploading(false);
+        }
+      }
+    };
+
+    const handleDragOver = (e: DragEvent) => e.preventDefault();
+
+    idoc.addEventListener("paste", handlePaste);
+    idoc.addEventListener("drop", handleDrop);
+    idoc.addEventListener("dragover", handleDragOver);
+
+    return () => {
+      idoc.removeEventListener("paste", handlePaste);
+      idoc.removeEventListener("drop", handleDrop);
+      idoc.removeEventListener("dragover", handleDragOver);
+    };
+  }, [activeTab, uploadUrl]);
+
+  // Commands
+  const cmd = useMemo(
+    () => ({
+      h1: () => {
+        const idoc = getIdoc();
+        idoc?.execCommand("formatBlock", false, currentFormat === "h1" ? "p" : "h1");
+      },
+      h2: () => {
+        const idoc = getIdoc();
+        idoc?.execCommand("formatBlock", false, currentFormat === "h2" ? "p" : "h2");
+      },
+      h3: () => {
+        const idoc = getIdoc();
+        idoc?.execCommand("formatBlock", false, currentFormat === "h3" ? "p" : "h3");
+      },
+      bold: () => {
+        const idoc = getIdoc();
+        idoc?.execCommand("bold");
+      },
+      italic: () => {
+        const idoc = getIdoc();
+        idoc?.execCommand("italic");
+      },
+      underline: () => {
+        const idoc = getIdoc();
+        idoc?.execCommand("underline");
+      },
+      bullet: () => {
+        const idoc = getIdoc();
+        idoc?.execCommand("insertUnorderedList");
+      },
+      ordered: () => {
+        const idoc = getIdoc();
+        idoc?.execCommand("insertOrderedList");
+      },
+      indent: () => {
+        const idoc = getIdoc();
+        idoc?.execCommand("indent");
+      },
+      outdent: () => {
+        const idoc = getIdoc();
+        idoc?.execCommand("outdent");
+      },
+      quote: () => {
+        const idoc = getIdoc();
+        idoc?.execCommand("formatBlock", false, currentFormat === "blockquote" ? "p" : "blockquote");
+      },
+      hr: () => {
+        const idoc = getIdoc();
+        idoc?.execCommand("insertHorizontalRule");
+      },
+      alignLeft: () => {
+        const idoc = getIdoc();
+        idoc?.execCommand("justifyLeft");
+        commitFromIframe();
+      },
+      alignCenter: () => {
+        const idoc = getIdoc();
+        idoc?.execCommand("justifyCenter");
+        commitFromIframe();
+      },
+      alignRight: () => {
+        const idoc = getIdoc();
+        idoc?.execCommand("justifyRight");
+        commitFromIframe();
+      },
+      alignJustify: () => {
+        const idoc = getIdoc();
+        idoc?.execCommand("justifyFull");
+        commitFromIframe();
+      },
+      unlink: () => {
+        const idoc = getIdoc();
+        idoc?.execCommand("unlink");
+        commitFromIframe();
+      },
+      setColor: (c: string) => {
+        const idoc = getIdoc();
+        idoc?.execCommand("foreColor", false, c);
+        commitFromIframe();
+      },
+      clear: () => {
+        const idoc = getIdoc();
+        idoc?.execCommand("removeFormat");
+        commitFromIframe();
+      },
+      undo: () => {
+        const idoc = getIdoc();
+        idoc?.execCommand("undo");
+        commitFromIframe();
+      },
+      redo: () => {
+        const idoc = getIdoc();
+        idoc?.execCommand("redo");
+        commitFromIframe();
+      },
+      openLinkBox: () => {
+        const idoc = getIdoc();
+        if (!idoc) return;
+        const href = idoc.queryCommandValue("createLink") as string;
+        setLinkUrl(href || "https://");
+        setShowLinkInput(true);
+      },
+    }),
+    [currentFormat]
+  );
+
+  // Image helpers (now commit after changes so state & UI update)
   const setImgAttrs = (cls: string) => {
-    if (!imageSelected) return toast.message("Select an image first.");
-    editor?.chain().focus().updateAttributes("image", { class: cls, style: styleFromImgClass(cls) }).run();
+    if (!imageNode) return toast.message("Select an image first.");
+    const style = styleFromImgClass(cls);
+    imageNode.className = cls;
+    imageNode.style.cssText = style;
+    imageNode.focus?.();
+    commitFromIframe();
   };
   const setImgSize = (sizeClass: string) => {
-    if (!imageSelected) return toast.message("Select an image first.");
-    const attrs = editor?.getAttributes("image") || {};
-    const base = (attrs.class || "")
+    if (!imageNode) return toast.message("Select an image first.");
+    const base = (imageNode.className || "")
       .split(/\s+/)
       .filter((c: string) => c && !/^img-(25|33|50|66|75|100)$/.test(c))
       .join(" ")
@@ -228,24 +665,26 @@ export function RichTextEditor({
     setImgAttrs(cls);
   };
 
-  // upload
+  // Upload
   const onUploadClick = () => fileInputRef.current?.click();
   const onFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = "";
-    if (!file || !editor) return;
+    if (!file) return;
     if (!file.type.startsWith("image/")) return toast.error("Please select an image");
+
+    bumpLiveEditing();
+    const temp = insertTempImage(file);
     try {
       setIsUploading(true);
       const url = await uploadImageToUrl(file, uploadUrl);
-      const cls = "img-block img-100";
-      editor
-        .chain()
-        .focus()
-        .setImage({ src: url, alt: file.name })
-        .updateAttributes("image", { class: cls, style: styleFromImgClass(cls) })
-        .run();
-      toast.success("Image added");
+      const ok = await ensureImageUrlLoads(url);
+      if (ok) {
+        if (temp) replaceTempImage(temp.tempId, url, temp.tempUrl);
+        toast.success("Image added");
+      } else {
+        toast.error("Uploaded image not reachable yet. Keeping preview.");
+      }
     } catch (err: any) {
       toast.error(err?.message || "Upload failed");
     } finally {
@@ -253,99 +692,48 @@ export function RichTextEditor({
     }
   };
 
-  // paste images
-  const onPaste = async (event: React.ClipboardEvent) => {
-    if (!editor) return;
-    const items = event.clipboardData?.items || [];
-    const images = Array.from(items).filter((it) => it.type.startsWith("image/"));
-    if (!images.length) return;
-    event.preventDefault();
-    for (const it of images) {
-      const f = it.getAsFile();
-      if (!f) continue;
-      try {
-        setIsUploading(true);
-        const url = await uploadImageToUrl(f, uploadUrl);
-        const cls = "img-block img-100";
-        editor
-          .chain()
-          .focus()
-          .setImage({ src: url, alt: f.name })
-          .updateAttributes("image", { class: cls, style: styleFromImgClass(cls) })
-          .run();
-      } catch (e: any) {
-        toast.error(e?.message || "Upload failed");
-      } finally {
-        setIsUploading(false);
-      }
-    }
+  const onReplacePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) return toast.error("Please select an image");
+    if (!imageNode) return toast.message("Select an image first.");
+    bumpLiveEditing();
+    await replaceExistingImage(file);
   };
 
-  // drag-drop images
-  const onDrop = async (event: React.DragEvent) => {
-    if (!editor) return;
-    const files = Array.from(event.dataTransfer?.files || []);
-    const images = files.filter((f) => f.type.startsWith("image/"));
-    if (!images.length) return;
-    event.preventDefault();
-    for (const img of images) {
-      try {
-        setIsUploading(true);
-        const url = await uploadImageToUrl(img, uploadUrl);
-        const cls = "img-block img-100";
-        editor
-          .chain()
-          .focus()
-          .setImage({ src: url, alt: img.name })
-          .updateAttributes("image", { class: cls, style: styleFromImgClass(cls) })
-          .run();
-      } catch (e: any) {
-        toast.error(e?.message || "Upload failed");
-      } finally {
-        setIsUploading(false);
-      }
-    }
+  // HTML tab apply
+  const applyFullHtml = () => {
+    changeOriginRef.current = "html";
+    setIsLiveEditing(false);
+    const s = splitHeadBody(htmlDraft);
+    setDoctype(s.doctype);
+    setHtmlAttrs(s.htmlAttrs);
+    setHeadHtml(s.headHtml);
+    setBodyHtml(s.bodyHtml);
+    const rejoined = joinHeadBody(s.doctype, s.htmlAttrs, s.headHtml, s.bodyHtml);
+    lastPushedRef.current = rejoined;
+    onChange?.(rejoined);
+    toast.success("Applied full HTML");
+    setActiveTab("visual");
+    requestAnimationFrame(() => {
+      changeOriginRef.current = null;
+    });
   };
 
   const is = {
-    h1: !!editor?.isActive("heading", { level: 1 }),
-    h2: !!editor?.isActive("heading", { level: 2 }),
-    h3: !!editor?.isActive("heading", { level: 3 }),
-    bold: !!editor?.isActive("bold"),
-    italic: !!editor?.isActive("italic"),
-    underline: !!editor?.isActive("underline"),
-    bullet: !!editor?.isActive("bulletList"),
-    ordered: !!editor?.isActive("orderedList"),
-    quote: !!editor?.isActive("blockquote"),
-    link: !!editor?.isActive("link"),
+    h1: currentFormat === "h1",
+    h2: currentFormat === "h2",
+    h3: currentFormat === "h3",
+    bold: isBold,
+    italic: isItalic,
+    underline: isUnderline,
+    bullet: isBullet,
+    ordered: isOrdered,
+    quote: currentFormat === "blockquote",
+    link: isLink,
   };
-  const currentAlign =
-    (editor?.getAttributes("paragraph")?.textAlign as string) ||
-    (editor?.getAttributes("heading")?.textAlign as string) ||
-    "left";
-
-  const previewHTML = activeTab === "html" ? htmlContent : (editor?.getHTML() || "");
-
-  // link box actions
-  const applyLink = () => {
-    if (!editor) return;
-    const url = (linkUrl || "").trim();
-    if (!url) {
-      editor.chain().focus().unsetLink().run();
-    } else {
-      editor
-        .chain()
-        .focus()
-        .extendMarkRange("link")
-        .setLink({ href: url, target: "_blank" })
-        .run();
-    }
-    setShowLinkInput(false);
-  };
-  const removeLink = () => {
-    editor?.chain().focus().unsetLink().run();
-    setShowLinkInput(false);
-  };
+  const imageSelected = !!imageNode;
 
   return (
     <div className="space-y-3">
@@ -353,12 +741,9 @@ export function RichTextEditor({
       <div className="flex gap-2">
         <Button size="sm" variant={activeTab === "visual" ? "default" : "outline"} onClick={() => setActiveTab("visual")}>Visual</Button>
         <Button size="sm" variant={activeTab === "html" ? "default" : "outline"} onClick={() => setActiveTab("html")}>HTML</Button>
-        <Button size="sm" variant={activeTab === "preview" ? "default" : "outline"} onClick={() => setActiveTab("preview")}>
-          <Eye className="h-4 w-4 mr-1" /> Preview
-        </Button>
       </div>
 
-      {/* Visual */}
+      {/* Visual (iframe editor) */}
       {activeTab === "visual" && (
         <div className="space-y-2">
           {/* Toolbar */}
@@ -409,7 +794,7 @@ export function RichTextEditor({
               <span className="ml-1">{isUploading ? "Uploading…" : "Image"}</span>
             </Button>
 
-            {/* ---------- Image controls (alignment + size) ---------- */}
+            {/* Image controls */}
             <div className="flex items-center gap-1 ml-2">
               <span className="text-xs text-muted-foreground">Image:</span>
               <Button size="sm" variant="outline" title="Float Left (wrap)" onClick={() => setImgAttrs("img-float-left img-50")} disabled={!imageSelected}>L</Button>
@@ -419,11 +804,11 @@ export function RichTextEditor({
               <select
                 className="border rounded px-1 py-[2px] text-xs"
                 onChange={(e) => setImgSize(e.target.value)}
-                defaultValue=""
+                value={imageSelected ? ((imageNode!.className.match(/img-(25|33|50|66|75|100)/)?.[0]) ?? "") : ""}
                 title="Image width"
                 disabled={!imageSelected}
               >
-                <option value="" disabled>Size</option>
+                <option value="">Size</option>
                 <option value="img-25">25%</option>
                 <option value="img-33">33%</option>
                 <option value="img-50">50%</option>
@@ -431,6 +816,19 @@ export function RichTextEditor({
                 <option value="img-75">75%</option>
                 <option value="img-100">100%</option>
               </select>
+
+              {/* Replace button shows when an image is selected */}
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => replaceInputRef.current?.click()}
+                disabled={!imageSelected || isUploading}
+                title="Replace selected image"
+                className="ml-1"
+              >
+                <ReplaceIcon className="h-4 w-4" />
+                <span className="ml-1">Replace</span>
+              </Button>
             </div>
           </div>
 
@@ -443,59 +841,50 @@ export function RichTextEditor({
                 placeholder="https://example.com"
                 className="flex-1 h-9 px-3 rounded-md border bg-background"
               />
-              <Button size="sm" onClick={applyLink}>Apply</Button>
-              <Button size="sm" variant="outline" onClick={removeLink}>Remove</Button>
+              <Button size="sm" onClick={() => {
+                const idoc = getIdoc();
+                if (!idoc) return;
+                const url = (linkUrl || "").trim();
+                if (!url) idoc.execCommand("unlink");
+                else idoc.execCommand("createLink", false, url);
+                setShowLinkInput(false);
+                commitFromIframe();
+              }}>Apply</Button>
+              <Button size="sm" variant="outline" onClick={() => { cmd.unlink(); setShowLinkInput(false); }}>Remove</Button>
               <Button size="sm" variant="ghost" onClick={() => setShowLinkInput(false)}>Close</Button>
             </div>
           )}
 
-          {/* Editor */}
-          <div onPaste={onPaste} onDrop={onDrop}>
-            <EditorContent
-              editor={editor}
-              className="tiptap p-4 border rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-ring"
-            />
-          </div>
+          {/* Iframe */}
+          <iframe
+            ref={iframeRef}
+            className="w-full border rounded-md bg-white"
+            style={{ height: `${height}px` }}
+            title="Visual Editor"
+          />
         </div>
       )}
 
-      {/* HTML */}
+      {/* HTML (full document) */}
       {activeTab === "html" && (
         <div className="space-y-2">
           <Textarea
-            value={htmlContent}
-            onChange={(e) => {
-              setHtmlContent(e.target.value);
-              onChange?.(e.target.value);
-            }}
+            value={htmlDraft}
+            onChange={(e) => setHtmlDraft(e.target.value)}
             className="min-h-[300px] font-mono text-sm"
-            placeholder="Edit raw HTML here…"
+            placeholder="Edit full HTML (head + body)…"
           />
           <div className="flex justify-end">
-            <Button
-              variant="outline"
-              onClick={() => {
-                if (!editor) return;
-                editor.commands.setContent(htmlContent || "<p></p>", true);
-
-                toast.success("Applied HTML to editor");
-                setActiveTab("visual");
-              }}
-            >
-              Apply HTML to Visual
+            <Button variant="outline" onClick={applyFullHtml}>
+              Apply to Visual
             </Button>
           </div>
         </div>
       )}
 
-      {/* Preview */}
-      {activeTab === "preview" && (
-        <div className="post-preview p-4 border rounded-md bg-white text-left">
-          <div dangerouslySetInnerHTML={{ __html: previewHTML }} />
-        </div>
-      )}
-
+      {/* Hidden pickers */}
       <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={onFileChange} />
+      <input ref={replaceInputRef} type="file" accept="image/*" className="hidden" onChange={onReplacePick} />
     </div>
   );
 }
