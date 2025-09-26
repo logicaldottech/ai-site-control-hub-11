@@ -178,56 +178,60 @@ export default function CreateBlogPost() {
   };
 
   /** Build payload & save (httpFile.post form-data) */
-  const handleSave = async () => {
-    const token = localStorage.getItem("token");
-    if (!title.trim()) return toast.error("Please enter a title");
-    if (!authorId) return toast.error("Please select an author");
-    if (!token) return toast.error("Missing auth token");
+const handleSave = async () => {
+  const token = localStorage.getItem("token");
+  if (!title.trim()) return toast.error("Please enter a title");
+  if (!authorId) return toast.error("Please select an author");
+  if (!token) return toast.error("Missing auth token");
 
-    let scheduleTime: number | undefined;
-    if (isSchedule && scheduleLocal) {
-      const ms = new Date(scheduleLocal).getTime();
-      if (!isNaN(ms)) scheduleTime = ms;
+  // ✅ send ISO 8601 string (UTC) if scheduled; else send nothing
+  let scheduleISO: string | undefined;
+  if (isSchedule && scheduleLocal) {
+    const d = new Date(scheduleLocal); // scheduleLocal is local time from <input type="datetime-local">
+    const ms = d.getTime();
+    if (isNaN(ms)) return toast.error("Invalid schedule date/time");
+    scheduleISO = d.toISOString(); // <-- send this
+  }
+
+  const keywordsArray = metaKeywords
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const form = new FormData();
+  form.append("title", title.trim());
+  form.append("information", information.trim());
+  form.append("content", content);
+  form.append("type", type);
+  if (projectId) form.append("projectId", projectId);
+  form.append("authorId", authorId);
+  if (metaTitle.trim()) form.append("meta_title", metaTitle.trim());
+  if (metaDescription.trim()) form.append("meta_description", metaDescription.trim());
+  form.append("meta_keywords", JSON.stringify(keywordsArray));
+  if (coverUrl) form.append("coverImage.url", coverUrl);
+  if (coverAlt) form.append("coverImage.alt", coverAlt);
+  form.append("status", String(status));
+
+  if (isSchedule) {
+    form.append("isSchedule", "true");
+    if (scheduleISO) form.append("scheduleTime", scheduleISO); // <-- ISO instead of epoch
+  }
+
+  try {
+    await httpFile.post("/createBlog", form, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    toast.success("Blog created successfully");
+    navigate("/admin/blog-posts", { state: { projectId } });
+  } catch (e: any) {
+    toast.error(e?.response?.data?.message || e?.message || "Create failed");
+    if (e?.response?.status === 401) {
+      localStorage.removeItem("token");
+      navigate("/login");
     }
+  }
+};
 
-    const keywordsArray = metaKeywords
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
-
-    const form = new FormData();
-    form.append("title", title.trim());
-    form.append("information", information.trim());
-    form.append("content", content);
-    form.append("type", type);
-    if (projectId) form.append("projectId", projectId);
-    form.append("authorId", authorId); // ✅ store authorId
-    if (metaTitle.trim()) form.append("meta_title", metaTitle.trim());
-    if (metaDescription.trim()) form.append("meta_description", metaDescription.trim());
-    form.append("meta_keywords", JSON.stringify(keywordsArray));
-    if (coverUrl) form.append("coverImage.url", coverUrl);
-    if (coverAlt) form.append("coverImage.alt", coverAlt);
-    form.append("status", String(status));
-
-    if (isSchedule) {
-      form.append("isSchedule", "true");
-      if (scheduleTime !== undefined) form.append("scheduleTime", String(scheduleTime));
-    }
-
-    try {
-      await httpFile.post("/createBlog", form, {
-        headers: { Authorization: `Bearer ${token}` }, // let axios set multipart boundary
-      });
-      toast.success("Blog created successfully");
-      navigate("/admin/blog-posts", { state: { projectId } });
-    } catch (e: any) {
-      toast.error(e?.response?.data?.message || e?.message || "Create failed");
-      if (e?.response?.status === 401) {
-        localStorage.removeItem("token");
-        navigate("/login");
-      }
-    }
-  };
 
   return (
     <div className="space-y-6">

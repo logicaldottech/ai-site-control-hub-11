@@ -1,5 +1,5 @@
 // pages/admin/EditBlogPost.tsx
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams, useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -38,15 +38,39 @@ type BlogTypeId = (typeof BLOG_TYPES)[number]["id"];
 const VALID_TYPE_IDS = new Set(BLOG_TYPES.map(t => t.id));
 type AuthorItem = { _id: string; name: string };
 
-function toLocalDatetimeInput(msLike?: string | number | null): string {
-  if (!msLike) return "";
-  const n = typeof msLike === "string" ? Number(msLike) : msLike;
-  if (!n) return "";
-  const d = new Date(n);
+function toLocalDatetimeInput(dateLike?: string | number | null): string {
+  if (!dateLike) return "";
+  const d = new Date(dateLike); // handles ISO or ms
   if (isNaN(d.getTime())) return "";
   const pad = (x: number) => `${x}`.padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
+
+
+/* ---------- helpers to guarantee saving FULL HTML ---------- */
+const looksFullDoc = (html: string) => /<!doctype|<html\b/i.test(html);
+
+const splitDoc = (fullHtml: string) => {
+  try {
+    const p = new DOMParser();
+    const d = p.parseFromString(fullHtml || "", "text/html");
+    const doctype = d.doctype ? `<!doctype ${d.doctype.name}>` : "<!doctype html>";
+    const htmlAttrs =
+      d.documentElement?.getAttributeNames?.()
+        ?.map(n => `${n}="${d.documentElement.getAttribute(n) ?? ""}"`)
+        .join(" ") || 'lang="en"';
+    return { doctype, htmlAttrs, head: d.head?.innerHTML ?? "", body: d.body?.innerHTML ?? "" };
+  } catch {
+    const head = (fullHtml.match(/<head[^>]*>([\s\S]*?)<\/head>/i)?.[1]) || "";
+    const body = (fullHtml.match(/<body[^>]*>([\s\S]*?)<\/body>/i)?.[1]) || fullHtml || "";
+    const doctype = (fullHtml.match(/<!doctype[^>]*>/i)?.[0]) || "<!doctype html>";
+    const htmlAttrs = (fullHtml.match(/<html([^>]*)>/i)?.[1] || ' lang="en"').trim() || 'lang="en"';
+    return { doctype, htmlAttrs, head, body };
+  }
+};
+
+const joinDoc = (doctype: string, htmlAttrs: string, head: string, body: string) =>
+  `${doctype || "<!doctype html>"}\n<html ${htmlAttrs || 'lang="en"'}>\n<head>\n${head || ""}\n</head>\n<body>\n${body || ""}\n</body>\n</html>`;
 
 export default function EditBlogPost() {
   const navigate = useNavigate();
@@ -91,6 +115,9 @@ export default function EditBlogPost() {
   const [status, setStatus] = useState<0 | 1 | 2>(0);
   const [isSchedule, setIsSchedule] = useState(false);
   const [scheduleLocal, setScheduleLocal] = useState<string>("");
+
+  // Keep the original full HTML we loaded (to reuse its head/doctype if content becomes body-only)
+  const originalFullRef = useRef<string>("");
 
   const authHeaders = useMemo(
     () => ({
@@ -140,6 +167,9 @@ export default function EditBlogPost() {
         setTitle(b.title || "");
         setInformation(b.information || "");
         setContent(b.content || "<p></p>");
+        if (typeof b.content === "string") {
+          originalFullRef.current = b.content; // keep what server returned
+        }
         setType(VALID_TYPE_IDS.has(b.type) ? (b.type as BlogTypeId) : BLOG_TYPES[0].id);
 
         // capture blog's saved author id (string, null, or undefined)
@@ -264,66 +294,74 @@ export default function EditBlogPost() {
   };
 
   // Save
-  const handleUpdate = async () => {
-    if (!blogId) return toast.error("Missing blog id");
-    if (!title.trim()) return toast.error("Please enter a title");
-    if (!authorId) return toast.error("Please select an author");
-    if (!token) return toast.error("Missing auth token");
+ const handleUpdate = async () => {
+  if (!blogId) return toast.error("Missing blog id");
+  if (!title.trim()) return toast.error("Please enter a title");
+  if (!authorId) return toast.error("Please select an author");
+  if (!token) return toast.error("Missing auth token");
 
-    let scheduleTime: number | undefined;
-    if (isSchedule && scheduleLocal) {
-      const ms = new Date(scheduleLocal).getTime();
-      if (!isNaN(ms)) scheduleTime = ms;
+  // ✅ send ISO string if scheduled
+  let scheduleISO: string | undefined;
+  if (isSchedule && scheduleLocal) {
+    const d = new Date(scheduleLocal);
+    if (!isNaN(d.getTime())) {
+      scheduleISO = d.toISOString(); // <-- ISO instead of epoch
     }
+  }
 
-    const keywordsArray = metaKeywords
-      .split(",")
-      .map(s => s.trim())
-      .filter(Boolean);
+  const keywordsArray = metaKeywords
+    .split(",")
+    .map(s => s.trim())
+    .filter(Boolean);
 
-    // Look up authorName for backend compatibility
-    const authorName = authors.find(a => String(a._id) === String(authorId))?.name || "";
+  const authorName = authors.find(a => String(a._id) === String(authorId))?.name || "";
 
-    const form = new FormData();
-    form.append("title", title.trim());
-    form.append("information", information.trim());
-    form.append("content", content); // Send full HTML
-    form.append("type", type);
-    if (projectId) form.append("projectId", projectId);
+  let contentToSave = content;
+  if (!looksFullDoc(contentToSave)) {
+    const orig = originalFullRef.current || "";
+    const { doctype, htmlAttrs, head } = splitDoc(looksFullDoc(orig) ? orig : "");
+    contentToSave = joinDoc(doctype, htmlAttrs, head, contentToSave);
+  }
 
-    // ✅ send both, to satisfy either backend contract
-    if (authorId) form.append("authorId", authorId);
-    if (authorName) form.append("authorName", authorName);
+  const form = new FormData();
+  form.append("title", title.trim());
+  form.append("information", information.trim());
+  form.append("content", contentToSave);
+  form.append("type", type);
+  if (projectId) form.append("projectId", projectId);
 
-    if (metaTitle.trim()) form.append("meta_title", metaTitle.trim());
-    if (metaDescription.trim()) form.append("meta_description", metaDescription.trim());
-    form.append("meta_keywords", JSON.stringify(keywordsArray));
+  if (authorId) form.append("authorId", authorId);
+  if (authorName) form.append("authorName", authorName);
 
-    if (coverUrl) form.append("coverImage.url", coverUrl);
-    if (coverAlt) form.append("coverImage.alt", coverAlt);
+  if (metaTitle.trim()) form.append("meta_title", metaTitle.trim());
+  if (metaDescription.trim()) form.append("meta_description", metaDescription.trim());
+  form.append("meta_keywords", JSON.stringify(keywordsArray));
 
-    form.append("status", String(status));
+  if (coverUrl) form.append("coverImage.url", coverUrl);
+  if (coverAlt) form.append("coverImage.alt", coverAlt);
 
-    if (isSchedule) {
-      form.append("isSchedule", "true");
-      if (scheduleTime !== undefined) form.append("scheduleTime", String(scheduleTime));
+  form.append("status", String(status));
+
+  if (isSchedule) {
+    form.append("isSchedule", "true");
+    if (scheduleISO) form.append("scheduleTime", scheduleISO); // <-- send ISO
+  }
+
+  try {
+    await httpFile.post(`/updateBlog/${blogId}`, form, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    toast.success("Blog updated");
+    navigate("/admin/blog-posts", { state: { projectId } });
+  } catch (e: any) {
+    toast.error(e?.response?.data?.message || e?.message || "Update failed");
+    if (e?.response?.status === 401) {
+      localStorage.removeItem("token");
+      navigate("/login");
     }
+  }
+};
 
-    try {
-      // ✅ Use the exact endpoint format your cURL uses
-      await httpFile.post(`/updateBlog/${blogId}`, form, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      toast.success("Blog updated");
-      navigate("/admin/blog-posts", { state: { projectId } });
-    } catch (e: any) {
-      toast.error(e?.response?.data?.message || e?.message || "Update failed");
-      if (e?.response?.status === 401) {
-        localStorage.removeItem("token");
-        navigate("/login");
-      }
-    }
-  };
 
   if (!blogId) {
     return (

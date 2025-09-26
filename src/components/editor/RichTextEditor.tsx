@@ -24,7 +24,22 @@ export type RichTextEditorProps = {
   height?: number;
 };
 
-const DEFAULT_UPLOAD_URL = "https://aibackend.todaystrends.site/admin/v1/uploadFile";
+const DEFAULT_UPLOAD_URL =
+  (import.meta as any).env?.VITE_UPLOAD_URL ||
+  "https://aibackend.todaystrends.site/admin/v1/uploadFile";
+
+// Build absolute URL using env VITE_IMAGES_BASE_URL
+const IMG_BASE: string =
+  (import.meta as any).env?.VITE_IMAGES_BASE_URL ||
+  "https://aibackend.todaystrends.site";
+
+function toAbs(url?: string): string {
+  if (!url) return "";
+  if (/^https?:\/\//i.test(url)) return url;
+  const join = (base: string, path: string) =>
+    base.replace(/\/+$/, "") + "/" + String(path).replace(/^\/+/, "");
+  return join(IMG_BASE, url);
+}
 
 /* ---------------------- Full-doc helpers ---------------------- */
 function splitHeadBody(fullHtml: string) {
@@ -56,37 +71,65 @@ function joinHeadBody(doctype: string, htmlAttrs: string, headHtml: string, body
   return `${doctype || "<!doctype html>"}\n<html ${htmlAttrs || 'lang="en"'}>\n<head>\n${headHtml || ""}\n</head>\n<body>\n${bodyHtml || ""}\n</body>\n</html>`;
 }
 
-/* ---------------------- Editor helpers ---------------------- */
-function styleFromImgClass(cls: string): string {
-  const tokens = (cls || "").split(/\s+/).filter(Boolean);
-  const has = (t: string) => tokens.includes(t);
+/* ---------------------- Image class / style helpers ---------------------- */
+type AlignToken = "img-float-left" | "img-float-right" | "img-center" | "img-block";
+type SizeToken = "img-25" | "img-33" | "img-50" | "img-66" | "img-75" | "img-100";
+
+const SIZE_ORDER: SizeToken[] = ["img-25", "img-33", "img-50", "img-66", "img-75", "img-100"];
+const ALIGN_DEFAULT: AlignToken = "img-block";
+const SIZE_DEFAULT: SizeToken = "img-100";
+
+function parseTokens(cls: string) {
+  const parts = (cls || "").split(/\s+/).filter(Boolean);
+  const align = (parts.find(p => /^img-(float-left|float-right|center|block)$/.test(p)) || ALIGN_DEFAULT) as AlignToken;
+  const size = (parts.find(p => /^img-(25|33|50|66|75|100)$/.test(p)) || SIZE_DEFAULT) as SizeToken;
+  return { align, size };
+}
+
+function buildClass(align: AlignToken, size: SizeToken) {
+  return `${align} ${size}`.trim();
+}
+
+function styleFromTokens(align: AlignToken, size: SizeToken): string {
   let style = "height:auto;";
-  if (has("img-float-left")) style += "float:left;margin:0.25rem 0.85rem 0.5rem 0;display:block;";
-  else if (has("img-float-right")) style += "float:right;margin:0.25rem 0 0.5rem 0.85rem;display:block;";
-  else if (has("img-center")) style += "float:none;display:block;margin:.75rem auto;";
-  else style += "float:none;display:block;margin:.75rem 0;";
-  const sizeToken = tokens.find(t => /^img-(25|33|50|66|75|100)$/.test(t)) || "img-100";
-  const pct = sizeToken.split("-")[1];
+  if (align === "img-float-left") style += "float:left;margin:0.25rem 0.85rem 0.5rem 0;display:block;clear:none;";
+  else if (align === "img-float-right") style += "float:right;margin:0.25rem 0 0.5rem 0.85rem;display:block;clear:none;";
+  else if (align === "img-center") style += "float:none;display:block;margin:.75rem auto;clear:none;";
+  else style += "float:none;display:block;margin:.75rem 0;clear:none;";
+
+  const pct = size.split("-")[1];
   style += `width:${pct}%;max-width:${pct}%;`;
   return style;
 }
 
+function ensureImageTokensAndStyle(el: HTMLImageElement) {
+  const { align, size } = parseTokens(el.className || "");
+  const cls = buildClass(align, size);
+  el.className = cls;
+  
+  // Always apply the full style from tokens to ensure consistency
+  el.style.cssText = styleFromTokens(align, size);
+}
+
+/* ---------------------- Upload helper (uses your API shape) ---------------------- */
 async function uploadImageToUrl(file: File, uploadUrl: string): Promise<string> {
   const fd = new FormData();
   fd.append("file", file);
   const res = await fetch(uploadUrl, { method: "POST", body: fd });
   if (!res.ok) throw new Error((await res.text().catch(() => "")) || "Upload failed");
+
   const data = await res.json().catch(() => ({} as any));
-  let url: string =
-    (data?.data && (typeof data.data === "string" ? data.data : (data.data?.url || data.data?.path || data.data?.filePath))) ||
-    data?.url || data?.filePath || data?.path || "";
-  if (!url) throw new Error("No URL returned from upload API");
-  // Normalize to absolute https
-  if (!/^https?:\/\//i.test(url)) {
-    const path = url.startsWith("/") ? url : `/${url}`;
-    url = `https://aibackend.todaystrends.site${path}`;
-  }
-  return url;
+  // Your response sample:
+  // { "message": "File uploaded successfully!!", "data": { "url": "/files/xxxx.webp" } }
+  const rel =
+    data?.data?.url ||
+    data?.url ||
+    data?.filePath ||
+    data?.path ||
+    "";
+
+  if (!rel) throw new Error("No URL returned from upload API");
+  return toAbs(rel);
 }
 
 function rgbToHex(color: string): string {
@@ -101,23 +144,66 @@ function uid() {
   return "tmp-" + Math.random().toString(36).slice(2, 9) + Date.now().toString(36);
 }
 
-function ensureImageUrlLoads(url: string, timeoutMs = 10000): Promise<boolean> {
-  return new Promise((resolve) => {
-    const img = new Image();
-    const done = (ok: boolean) => {
-      clearTimeout(timer);
-      img.onload = null;
-      img.onerror = null;
-      resolve(ok);
-    };
-    const bust = url + (url.includes("?") ? "&" : "?") + "__r=" + Date.now();
-    const timer = setTimeout(() => done(false), timeoutMs);
-    img.crossOrigin = "anonymous";
-    img.onload = () => done(true);
-    img.onerror = () => done(false);
-    img.src = bust;
-  });
+
+
+
+
+
+
+
+
+function applyFinalImageUrl(img: HTMLImageElement, newUrl: string) {
+  // Update the <img> itself
+  img.src = newUrl;
+  img.setAttribute("srcset", newUrl);      // single candidate keeps it simple
+  // keep existing sizes or default if missing
+  if (!img.getAttribute("sizes")) img.setAttribute("sizes", "100vw");
+
+  // If inside <picture>, update all <source> candidates too
+  const pic =
+    img.parentElement?.tagName === "PICTURE"
+      ? (img.parentElement as HTMLPictureElement)
+      : null;
+
+  if (pic) {
+    const sources = Array.from(pic.querySelectorAll("source"));
+    sources.forEach((s) => {
+      s.setAttribute("srcset", newUrl);
+      if (!s.getAttribute("sizes")) s.setAttribute("sizes", "100vw");
+    });
+  }
 }
+
+// Re-apply our layout as !important so it beats outside CSS
+function applyImportantLayout(img: HTMLImageElement) {
+  const { align, size } = parseTokens(img.className || "");
+  // derive float/margin/display/clear
+  let floatVal = "none";
+  let marginVal = ".75rem 0";
+  let displayVal = "block";
+  let clearVal = "none";
+  if (align === "img-float-left") {
+    floatVal = "left";
+    marginVal = "0.25rem 0.85rem 0.5rem 0";
+  } else if (align === "img-float-right") {
+    floatVal = "right";
+    marginVal = "0.25rem 0 0.5rem 0.85rem";
+  } else if (align === "img-center") {
+    floatVal = "none";
+    marginVal = ".75rem auto";
+  }
+  const pct = size.split("-")[1] || "100";
+
+  // apply with !important
+  img.style.setProperty("height", "auto", "important");
+  img.style.setProperty("float", floatVal, "important");
+  img.style.setProperty("margin", marginVal, "important");
+  img.style.setProperty("display", displayVal, "important");
+  img.style.setProperty("clear", clearVal, "important");
+  img.style.setProperty("width", `${pct}%`, "important");
+  img.style.setProperty("max-width", `${pct}%`, "important");
+}
+
 
 /* ---------------------- Component ---------------------- */
 export function RichTextEditor({
@@ -132,7 +218,7 @@ export function RichTextEditor({
   const initialFull =
     value ??
     initialHTML ??
-    "<!doctype html><html lang=\"en\"><head></head><body><p>Start writing…</p></body></html>";
+    '<!doctype html><html lang="en"><head></head><body><p>Start writing…</p></body></html>';
   const init = splitHeadBody(initialFull);
 
   const [doctype, setDoctype] = useState(init.doctype);
@@ -149,7 +235,7 @@ export function RichTextEditor({
   const bumpLiveEditing = () => {
     setIsLiveEditing(true);
     if (liveEditTimerRef.current) window.clearTimeout(liveEditTimerRef.current);
-    liveEditTimerRef.current = window.setTimeout(() => setIsLiveEditing(false), 1200);
+    liveEditTimerRef.current = window.setTimeout(() => setIsLiveEditing(false), 900);
   };
 
   // If parent updates `value`, accept only when not live-editing (in visual)
@@ -188,7 +274,6 @@ export function RichTextEditor({
     joinHeadBody(doctype, htmlAttrs, headHtml, bodyHtml)
   );
 
-
   // While editing in HTML tab, live-emit the draft so parent can save it
   useEffect(() => {
     if (activeTab !== "html") return;
@@ -197,11 +282,7 @@ export function RichTextEditor({
     onChange?.(full);
   }, [htmlDraft, activeTab, onChange]);
 
-
   // Keep draft in sync when parts change, except while actively typing in HTML tab
-
-
-
   useEffect(() => {
     if (activeTab === "html") return;
     setHtmlDraft(joinHeadBody(doctype, htmlAttrs, headHtml, bodyHtml));
@@ -215,16 +296,62 @@ export function RichTextEditor({
   const getIdoc = () => iframeRef.current?.contentDocument || null;
   const getRoot = () => getIdoc()?.getElementById("root") || null;
 
+  const emitFull = (body: string) => {
+    const full = joinHeadBody(doctype, htmlAttrs, headHtml, body);
+    if (full !== lastPushedRef.current) {
+      lastPushedRef.current = full;
+      onChange?.(full);
+    }
+  };
+
   const commitFromIframe = () => {
     const root = getRoot();
     if (!root) return;
     const html = root.innerHTML;
     setBodyHtml((prev) => (prev === html ? prev : html));
-    const full = joinHeadBody(doctype, htmlAttrs, headHtml, html);
-    if (full !== lastPushedRef.current) {
-      lastPushedRef.current = full;
-      onChange?.(full);
+    emitFull(html);
+  };
+
+  // Helper to get currently selected image
+  const getSelectedImage = (): HTMLImageElement | null => {
+    const idoc = getIdoc();
+    if (!idoc) return null;
+    
+    const sel = idoc.getSelection();
+    if (!sel || sel.rangeCount === 0) return null;
+    
+    const range = sel.getRangeAt(0);
+    let node: Node | null = range.commonAncestorContainer;
+    
+    // If text node, get parent element
+    if (node.nodeType === Node.TEXT_NODE) {
+      node = node.parentNode;
     }
+    
+    const element = node as HTMLElement;
+    
+    // Check if the node itself is an image
+    if (element?.tagName === 'IMG') {
+      return element as HTMLImageElement;
+    }
+    
+    // Check if an image is selected within the range
+    if (range.startContainer === range.endContainer && range.startOffset === range.endOffset - 1) {
+      const selectedNode = range.startContainer.childNodes[range.startOffset];
+      if (selectedNode?.nodeType === Node.ELEMENT_NODE && (selectedNode as HTMLElement).tagName === 'IMG') {
+        return selectedNode as HTMLImageElement;
+      }
+    }
+    
+    // Look for selected image in the range
+    const images = element?.querySelectorAll?.('img') || [];
+    for (const img of images) {
+      if (range.intersectsNode(img)) {
+        return img as HTMLImageElement;
+      }
+    }
+    
+    return null;
   };
 
   // Write iframe document
@@ -236,11 +363,9 @@ export function RichTextEditor({
       h3 { font-size: 1.25rem; line-height: 1.75rem; font-weight: 600; margin: .75rem 0 .5rem; }
       ul { list-style: disc; padding-left: 1.5rem; }
       ol { list-style: decimal; padding-left: 1.5rem; }
-      a { text-decoration: underline; color: #2563eb; cursor: pointer; }
-      a:hover { text-decoration: underline; }
-      a:visited { color: #7c3aed; }
+      a { text-decoration: underline; cursor: pointer; }
       img { max-width: 100%; height: auto; display: block; }
-      img:focus { outline: 2px solid #60a5fa; }
+      img:focus, img.selected { outline: 2px solid #60a5fa; }
     `;
     const docHtml = `${doctype || "<!doctype html>"}
 <html ${htmlAttrs || 'lang="en"'}>
@@ -257,23 +382,39 @@ ${head || ""}
       const root = document.getElementById('root');
       const send = () => parent.postMessage({ type: 'RTE_BODY_HTML', html: root.innerHTML }, '*');
       root.addEventListener('input', send);
+      root.addEventListener('blur', send, true); // commit on blur
 
       const ping = () => parent.postMessage({ type: 'RTE_PING_EDIT' }, '*');
       ['focusin','keydown','input','paste','drop','mouseup','click'].forEach(ev => {
         root.addEventListener(ev, ping);
       });
 
-      // Ensure clicking an image selects it clearly
+      // Enhanced image selection handling
       root.addEventListener('click', (e) => {
         const t = e.target;
         if (t && t.tagName === 'IMG') {
           try {
+            // Clear any existing selection classes
+            root.querySelectorAll('img.selected').forEach(img => img.classList.remove('selected'));
+            
+            // Add selected class to clicked image
+            t.classList.add('selected');
+            
             const sel = window.getSelection();
             const r = document.createRange();
             r.selectNode(t);
             sel.removeAllRanges();
             sel.addRange(r);
-          } catch {}
+            
+            // Notify parent about image selection
+            parent.postMessage({ type: 'RTE_IMAGE_SELECTED', img: t }, '*');
+          } catch(err) {
+            console.log('Selection error:', err);
+          }
+        } else {
+          // Clear image selection if clicking elsewhere
+          root.querySelectorAll('img.selected').forEach(img => img.classList.remove('selected'));
+          parent.postMessage({ type: 'RTE_IMAGE_DESELECTED' }, '*');
         }
       });
 
@@ -282,9 +423,15 @@ ${head || ""}
         const t = e.target;
         if (t && t.tagName === 'IMG') {
           e.preventDefault();
-          const id = (t as HTMLElement).getAttribute('data-temp-id') || null;
-          parent.postMessage({ type: 'RTE_REQ_REPLACE', imgIndexHint: null }, '*');
+          parent.postMessage({ type: 'RTE_REQ_REPLACE', img: t }, '*');
         }
+      });
+      
+      // Update selection on any change
+      ['selectionchange', 'keyup', 'mouseup'].forEach(ev => {
+        document.addEventListener(ev, () => {
+          parent.postMessage({ type: 'RTE_SELECTION_CHANGE' }, '*');
+        });
       });
     })();
   </script>
@@ -327,11 +474,7 @@ ${head || ""}
         changeOriginRef.current = "visual";
         const html = String(e.data.html || "");
         setBodyHtml((prev) => (prev === html ? prev : html));
-        const full = joinHeadBody(doctype, htmlAttrs, headHtml, html);
-        if (full !== lastPushedRef.current) {
-          lastPushedRef.current = full;
-          onChange?.(full);
-        }
+        emitFull(html);
         requestAnimationFrame(() => {
           changeOriginRef.current = null;
         });
@@ -343,6 +486,26 @@ ${head || ""}
         } else {
           toast.message("Select an image first.");
         }
+      }
+      if (e?.data?.type === "RTE_IMAGE_SELECTED") {
+        // Image was selected in iframe
+        const imgElement = getSelectedImage();
+        if (imgElement) {
+          ensureImageTokensAndStyle(imgElement);
+          setImageNode(imgElement);
+        }
+      }
+      if (e?.data?.type === "RTE_IMAGE_DESELECTED") {
+        // Image was deselected
+        setImageNode(null);
+      }
+      if (e?.data?.type === "RTE_SELECTION_CHANGE") {
+        // Selection changed - update image node
+        const imgElement = getSelectedImage();
+        if (imgElement) {
+          ensureImageTokensAndStyle(imgElement);
+        }
+        setImageNode(imgElement);
       }
     };
     window.addEventListener("message", handleMsg);
@@ -373,21 +536,12 @@ ${head || ""}
       const linkHref = doc.queryCommandValue("createLink") as string;
       setIsLink(!!linkHref);
 
-      // Detect selected image
-      let imgEl: HTMLImageElement | null = null;
-      const sel = doc.getSelection();
-      if (sel && sel.rangeCount > 0) {
-        const range = sel.getRangeAt(0);
-        let node: Node | null = range.commonAncestorContainer;
-        if (node && (node as Node).nodeType !== 1) node = (node as Node).parentNode;
-        const el = node as HTMLElement | null;
-        if (el?.tagName === "IMG") {
-          imgEl = el as HTMLImageElement;
-        } else {
-          imgEl = (el?.closest?.("img") as HTMLImageElement | null) || null;
-        }
+      // Update image selection
+      const imgElement = getSelectedImage();
+      if (imgElement) {
+        ensureImageTokensAndStyle(imgElement);
       }
-      setImageNode(imgEl);
+      setImageNode(imgElement);
     };
 
     idoc.addEventListener("selectionchange", updateToolbar);
@@ -406,18 +560,19 @@ ${head || ""}
     };
   }, [activeTab]);
 
-  // ---- Image insertion helpers (show image immediately, then swap to uploaded URL after it loads)
+  // ---- Image insertion helpers (show temp preview, then swap to uploaded URL) ----
   const insertTempImage = (file: File) => {
     const idoc = getIdoc();
     if (!idoc) return null;
     const tempUrl = URL.createObjectURL(file);
     const tempId = uid();
-    const cls = "img-block img-100";
-    const style = styleFromImgClass(cls);
+    const align: AlignToken = ALIGN_DEFAULT;
+    const size: SizeToken = SIZE_DEFAULT;
+    const cls = buildClass(align, size);
+    const style = styleFromTokens(align, size);
     const imgHtml = `<img src="${tempUrl}" data-temp-id="${tempId}" alt="${file.name}" class="${cls}" style="${style}">`;
     idoc.execCommand("insertHTML", false, imgHtml);
-    // commit change so state syncs and selection can find the image
-    commitFromIframe();
+    commitFromIframe(); // sync right away
     return { tempUrl, tempId };
   };
 
@@ -426,42 +581,70 @@ ${head || ""}
     if (!root) return;
     const el = root.querySelector(`img[data-temp-id="${tempId}"]`) as HTMLImageElement | null;
     if (el) {
+      const prevStyle = el.style.cssText; // preserve dimensions
+      const prevClass = el.className;
       el.src = finalUrl;
       el.removeAttribute("data-temp-id");
+      el.className = prevClass;
+      el.style.cssText = prevStyle;
     }
     if (revokeUrl) URL.revokeObjectURL(revokeUrl);
-    commitFromIframe();
+    commitFromIframe(); // emit after replacement
   };
 
-  const replaceExistingImage = async (file: File) => {
-    const idoc = getIdoc();
-    if (!idoc || !imageNode) return;
-    // Insert temp preview in place of current selection image
-    const tempUrl = URL.createObjectURL(file);
-    const tempId = uid();
-    imageNode.setAttribute("data-temp-id", tempId);
-    imageNode.src = tempUrl;
-    commitFromIframe();
+ const replaceExistingImage = async (file: File) => {
+  const idoc = getIdoc();
+  if (!idoc || !imageNode) return;
 
-    try {
-      setIsUploading(true);
-      const url = await uploadImageToUrl(file, uploadUrl);
-      const ok = await ensureImageUrlLoads(url);
-      if (ok) {
-        imageNode.src = url;
-        imageNode.removeAttribute("data-temp-id");
-        toast.success("Image replaced");
-      } else {
-        toast.error("Uploaded image not reachable yet. Keeping preview.");
+  // Remember current tokens/class to preserve layout intent
+  const prevClass = imageNode.className || "";
+
+  // Temp preview
+  const tempUrl = URL.createObjectURL(file);
+  const tempId = uid();
+  imageNode.setAttribute("data-temp-id", tempId);
+  imageNode.src = tempUrl;
+  commitFromIframe();
+
+  try {
+    setIsUploading(true);
+    const url = await uploadImageToUrl(file, uploadUrl);
+
+    // Find the temp-tagged image again (DOM may have reflowed)
+    const root = getRoot();
+    const currentImg = root?.querySelector(`img[data-temp-id="${tempId}"]`) as HTMLImageElement | null;
+    if (currentImg) {
+      // 1) Point ALL responsive candidates to the new file
+      applyFinalImageUrl(currentImg, url);
+
+      // 2) Restore our class/tokens and re-assert layout with !important
+      currentImg.removeAttribute("data-temp-id");
+      currentImg.className = prevClass;
+      applyImportantLayout(currentImg);   // <- critical: beats external CSS
+      ensureImageTokensAndStyle(currentImg); // keep tokens sane (no-ops if already good)
+
+      // 3) Keep reference/selection
+      setImageNode(currentImg);
+      const sel = idoc.getSelection();
+      if (sel) {
+        const range = idoc.createRange();
+        range.selectNode(currentImg);
+        sel.removeAllRanges();
+        sel.addRange(range);
+        currentImg.classList.add("selected");
       }
-    } catch (err: any) {
-      toast.error(err?.message || "Replace failed");
-    } finally {
-      setIsUploading(false);
-      URL.revokeObjectURL(tempUrl);
-      commitFromIframe();
     }
-  };
+
+    toast.success("Image replaced successfully");
+  } catch (err: any) {
+    toast.error(err?.message || "Replace failed");
+  } finally {
+    setIsUploading(false);
+    URL.revokeObjectURL(tempUrl);
+    commitFromIframe();
+  }
+};
+
 
   // Handle paste and drop for images
   useEffect(() => {
@@ -484,13 +667,8 @@ ${head || ""}
         try {
           setIsUploading(true);
           const url = await uploadImageToUrl(file, uploadUrl);
-          const ok = await ensureImageUrlLoads(url);
-          if (ok) {
-            if (temp) replaceTempImage(temp.tempId, url, temp.tempUrl);
-            toast.success("Image added");
-          } else {
-            toast.error("Uploaded image not reachable yet. Keeping preview.");
-          }
+          if (temp) replaceTempImage(temp.tempId, url, temp.tempUrl);
+          toast.success("Image added");
         } catch (err: any) {
           toast.error(err?.message || "Upload failed");
         } finally {
@@ -510,13 +688,8 @@ ${head || ""}
         try {
           setIsUploading(true);
           const url = await uploadImageToUrl(file, uploadUrl);
-          const ok = await ensureImageUrlLoads(url);
-          if (ok) {
-            if (temp) replaceTempImage(temp.tempId, url, temp.tempUrl);
-            toast.success("Image added");
-          } else {
-            toast.error("Uploaded image not reachable yet. Keeping preview.");
-          }
+          if (temp) replaceTempImage(temp.tempId, url, temp.tempUrl);
+          toast.success("Image added");
         } catch (err: any) {
           toast.error(err?.message || "Upload failed");
         } finally {
@@ -645,24 +818,55 @@ ${head || ""}
     [currentFormat]
   );
 
-  // Image helpers (now commit after changes so state & UI update)
-  const setImgAttrs = (cls: string) => {
-    if (!imageNode) return toast.message("Select an image first.");
-    const style = styleFromImgClass(cls);
+  // Image helpers (align & size) — commit after changes so state & UI update
+  const setImgAttrs = (align: AlignToken, size: SizeToken) => {
+    if (!imageNode) {
+      toast.message("Select an image first.");
+      return;
+    }
+    
+    const cls = buildClass(align, size);
     imageNode.className = cls;
-    imageNode.style.cssText = style;
-    imageNode.focus?.();
+    applyImportantLayout(imageNode);
+    imageNode.style.cssText = styleFromTokens(align, size);
+    
+    // Keep the image selected and focused
+    imageNode.focus();
+    imageNode.classList.add('selected');
+    
+    // Maintain selection
+    const idoc = getIdoc();
+    if (idoc) {
+      const sel = idoc.getSelection();
+      if (sel) {
+        const range = idoc.createRange();
+        range.selectNode(imageNode);
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+    }
+    
     commitFromIframe();
   };
+
   const setImgSize = (sizeClass: string) => {
-    if (!imageNode) return toast.message("Select an image first.");
-    const base = (imageNode.className || "")
-      .split(/\s+/)
-      .filter((c: string) => c && !/^img-(25|33|50|66|75|100)$/.test(c))
-      .join(" ")
-      .trim();
-    const cls = [base, sizeClass].filter(Boolean).join(" ").trim();
-    setImgAttrs(cls);
+    if (!imageNode) {
+      toast.message("Select an image first.");
+      return;
+    }
+    const { align } = parseTokens(imageNode.className || "");
+    const wanted = (SIZE_ORDER.find(s => s === sizeClass) || SIZE_DEFAULT) as SizeToken;
+    setImgAttrs(align, wanted);
+  };
+
+  const setImgAlign = (alignClass: string) => {
+    if (!imageNode) {
+      toast.message("Select an image first.");
+      return;
+    }
+    const { size } = parseTokens(imageNode.className || "");
+    const wanted = alignClass as AlignToken;
+    setImgAttrs(wanted, size);
   };
 
   // Upload
@@ -678,13 +882,8 @@ ${head || ""}
     try {
       setIsUploading(true);
       const url = await uploadImageToUrl(file, uploadUrl);
-      const ok = await ensureImageUrlLoads(url);
-      if (ok) {
-        if (temp) replaceTempImage(temp.tempId, url, temp.tempUrl);
-        toast.success("Image added");
-      } else {
-        toast.error("Uploaded image not reachable yet. Keeping preview.");
-      }
+      if (temp) replaceTempImage(temp.tempId, url, temp.tempUrl);
+      toast.success("Image added");
     } catch (err: any) {
       toast.error(err?.message || "Upload failed");
     } finally {
@@ -734,6 +933,10 @@ ${head || ""}
     link: isLink,
   };
   const imageSelected = !!imageNode;
+
+  // Get current image alignment and size for UI
+  const currentImageAlign = imageSelected ? parseTokens(imageNode!.className || "").align : ALIGN_DEFAULT;
+  const currentImageSize = imageSelected ? parseTokens(imageNode!.className || "").size : SIZE_DEFAULT;
 
   return (
     <div className="space-y-3">
@@ -797,14 +1000,46 @@ ${head || ""}
             {/* Image controls */}
             <div className="flex items-center gap-1 ml-2">
               <span className="text-xs text-muted-foreground">Image:</span>
-              <Button size="sm" variant="outline" title="Float Left (wrap)" onClick={() => setImgAttrs("img-float-left img-50")} disabled={!imageSelected}>L</Button>
-              <Button size="sm" variant="outline" title="Float Right (wrap)" onClick={() => setImgAttrs("img-float-right img-50")} disabled={!imageSelected}>R</Button>
-              <Button size="sm" variant="outline" title="Center" onClick={() => setImgAttrs("img-center img-50")} disabled={!imageSelected}>C</Button>
-              <Button size="sm" variant="outline" title="Block / Full" onClick={() => setImgAttrs("img-block img-100")} disabled={!imageSelected}>Full</Button>
+              <Button 
+                size="sm" 
+                variant={currentImageAlign === "img-float-left" ? "default" : "outline"} 
+                title="Float Left (wrap)" 
+                onClick={() => setImgAlign("img-float-left")} 
+                disabled={!imageSelected}
+              >
+                L
+              </Button>
+              <Button 
+                size="sm" 
+                variant={currentImageAlign === "img-float-right" ? "default" : "outline"} 
+                title="Float Right (wrap)" 
+                onClick={() => setImgAlign("img-float-right")} 
+                disabled={!imageSelected}
+              >
+                R
+              </Button>
+              <Button 
+                size="sm" 
+                variant={currentImageAlign === "img-center" ? "default" : "outline"} 
+                title="Center" 
+                onClick={() => setImgAlign("img-center")} 
+                disabled={!imageSelected}
+              >
+                C
+              </Button>
+              <Button 
+                size="sm" 
+                variant={currentImageAlign === "img-block" ? "default" : "outline"} 
+                title="Block / Full" 
+                onClick={() => setImgAlign("img-block")} 
+                disabled={!imageSelected}
+              >
+                Full
+              </Button>
               <select
                 className="border rounded px-1 py-[2px] text-xs"
                 onChange={(e) => setImgSize(e.target.value)}
-                value={imageSelected ? ((imageNode!.className.match(/img-(25|33|50|66|75|100)/)?.[0]) ?? "") : ""}
+                value={imageSelected ? currentImageSize : ""}
                 title="Image width"
                 disabled={!imageSelected}
               >

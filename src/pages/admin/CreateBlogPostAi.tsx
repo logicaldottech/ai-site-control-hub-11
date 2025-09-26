@@ -1,3 +1,4 @@
+// components/.../AiBlogsWizard.tsx
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
@@ -99,10 +100,7 @@ export default function AiBlogsWizard() {
         });
         const list = Array.isArray(res.data?.data) ? res.data.data : [];
         setAuthors(list);
-        // default to the first one to avoid empty Select value later
-        if (!authorId && list.length) {
-          setAuthorId(String(list[0]._id));
-        }
+        if (!authorId && list.length) setAuthorId(String(list[0]._id));
       } catch (err: any) {
         console.error("fetch_authors error:", err);
         if (err?.response?.status === 401) {
@@ -150,6 +148,18 @@ export default function AiBlogsWizard() {
     };
     if (step === 2) fetchLocations();
   }, [step, locationBased, projectId, token]);
+
+
+  // Reset success state whenever you move away from Step 5
+  useEffect(() => {
+    if (step !== 5 && done) setDone(false);
+  }, [step]);
+
+  // Reset success state if the user changes anything that affects output
+  useEffect(() => {
+    if (done) setDone(false);
+  }, [titles, blogType, locationBased, authorId]);
+
 
   // ----- Tree helpers -----
   const isNodeChecked = (n: TreeNode) => selectedIds.has(n.id);
@@ -331,7 +341,79 @@ export default function AiBlogsWizard() {
     setTitles(prev => [...prev, `New Title ${prev.length + 1}`]);
   };
 
-  // ----- Finish: call create_ai_blog with titles[] + authorId -----
+  // ----- Scheduling feature (new) -----
+  type Frequency = "once" | "daily" | "weekly" | "monthly";
+
+  const [publishMode, setPublishMode] = useState<"instant" | "schedule">("instant");
+  const [frequency, setFrequency] = useState<Frequency>("daily");
+  const [firstPublishIso, setFirstPublishIso] = useState<string>(() => {
+    // default now + 1 hour
+    const d = new Date();
+    d.setHours(d.getHours() + 1);
+    // reduce seconds to 0
+    d.setSeconds(0); d.setMilliseconds(0);
+    return d.toISOString().slice(0, 16); // local datetime-local expects "YYYY-MM-DDTHH:MM"
+  });
+
+  // per-title schedule entries (ISO string)
+  const [titleSchedules, setTitleSchedules] = useState<string[]>([]);
+
+  // compute schedule dates based on firstPublishIso + frequency for number of titles
+  const computeScheduleDates = (firstIsoLocal: string, freq: Frequency, countItems: number) => {
+    if (!firstIsoLocal) return Array(countItems).fill("");
+    // firstIsoLocal is "YYYY-MM-DDTHH:MM" (local). Create Date using local components.
+    const parseLocal = (localIso: string) => {
+      const [d, t] = (localIso || "").split("T");
+      if (!d || !t) return null;
+      const [y, m, day] = d.split("-").map(Number);
+      const [hh, mm] = t.split(":").map(Number);
+      return new Date(y, (m || 1) - 1, day, hh || 0, mm || 0, 0, 0);
+    };
+    const first = parseLocal(firstIsoLocal);
+    if (!first) return Array(countItems).fill("");
+
+    const out: string[] = [];
+    for (let i = 0; i < countItems; i++) {
+      const dt = new Date(first.getTime());
+      if (i > 0) {
+        if (freq === "daily") dt.setDate(dt.getDate() + i);
+        else if (freq === "weekly") dt.setDate(dt.getDate() + 7 * i);
+        else if (freq === "monthly") {
+          // Add months preserving day as best as possible
+          const newMonth = dt.getMonth() + i;
+          dt.setMonth(newMonth);
+        } else {
+          // once -> set same timestamp for all (but user can edit individually)
+        }
+      }
+      // produce ISO in local datetime-local format "YYYY-MM-DDTHH:MM"
+      const pad = (n: number) => String(n).padStart(2, "0");
+      const isoLocal = `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+      out.push(isoLocal);
+    }
+    return out;
+  };
+
+  // regenerate titleSchedules whenever titles/firstPublishIso/frequency/publishMode change
+  useEffect(() => {
+    if (publishMode === "schedule" && titles.length) {
+      const dates = computeScheduleDates(firstPublishIso, frequency, titles.length);
+      setTitleSchedules(dates);
+    } else {
+      setTitleSchedules([]);
+    }
+  }, [titles, publishMode, firstPublishIso, frequency]);
+
+  // update a single title schedule (manual override)
+  const updateTitleScheduleAt = (index: number, isoLocal: string) => {
+    setTitleSchedules(prev => {
+      const copy = [...prev];
+      copy[index] = isoLocal;
+      return copy;
+    });
+  };
+
+  // ----- Finish: call create_ai_blog with titles[] + authorId + publish/schedule info -----
   const finish = async () => {
     if (!projectId) {
       toast({ title: "Missing projectId", description: "Cannot generate without projectId.", variant: "destructive" });
@@ -350,14 +432,49 @@ export default function AiBlogsWizard() {
       return;
     }
 
+    // Validate schedule entries if scheduling chosen
+    if (publishMode === "schedule") {
+      // ensure every title has a schedule datetime
+      const anyEmpty = titleSchedules.some(s => !s || !s.trim());
+      if (anyEmpty) {
+        toast({ title: "Missing schedule datetimes", description: "Please set the datetime for each post.", variant: "destructive" });
+        return;
+      }
+    }
+
     setSubmitLoading(true);
     try {
-      const payload = {
+      // Build payload
+      // For instant publish -> send status: 1
+      // For schedule -> send status: 0, and include per-title schedule info
+      let payload: any = {
         projectId,
-        title: titles,     // array of titles
+        title: titles,     // array of titles (legacy param)
         type: blogType,    // id: "how" | "best" | ...
-        authorId          // ✅ send authorId instead of authorName
+        authorId
       };
+
+      if (publishMode === "instant") {
+        payload.status = 1; // published
+      } else {
+        payload.status = 0; // not published, scheduled
+        // Attach per-title schedule info
+        // We will build an array of objects: { title, scheduledAt: ISO-string (UTC), scheduleKey }
+        const convertLocalToUTCiso = (localIso: string) => {
+          // localIso is "YYYY-MM-DDTHH:MM" -> build Date in local timezone and return ISO string
+          const [d, t] = localIso.split("T");
+          const [y, m, day] = d.split("-").map(Number);
+          const [hh, mm] = t.split(":").map(Number);
+          const dt = new Date(y, m - 1, day, hh || 0, mm || 0, 0, 0);
+          return dt.toISOString(); // UTC ISO
+        };
+        const titlesWithSchedule = titles.map((t, i) => ({
+          title: t,
+          scheduledAt: convertLocalToUTCiso(titleSchedules[i] || firstPublishIso),
+          scheduleKey: frequency // send frequency key for backend to interpret
+        }));
+        payload.titlesWithSchedule = titlesWithSchedule;
+      }
 
       const res = await httpFile.post("/create_ai_blog", payload, {
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }
@@ -554,9 +671,11 @@ export default function AiBlogsWizard() {
                   <div key={i} className="flex items-center gap-2">
                     <Input
                       value={t}
-                      onChange={e =>
-                        setTitles(prev => prev.map((x, idx) => (idx === i ? e.target.value : x)))
-                      }
+                      onChange={e => {
+                        setDone(false);
+                        setTitles(prev => prev.map((x, idx) => (idx === i ? e.target.value : x)));
+                      }}
+
                     />
                     <Button variant="outline" onClick={() => regenerateOne(i)}>
                       <Sparkles className="h-4 w-4" />
@@ -625,12 +744,68 @@ export default function AiBlogsWizard() {
                   </div>
                 </div>
 
+                {/* Publish Mode */}
+                <div className="border rounded-lg p-4 bg-gray-50 space-y-3">
+                  <div className="flex items-center gap-3">
+                    <Label className="min-w-[110px]">Publish mode</Label>
+                    <div className="flex gap-2">
+                      <Button variant={publishMode === "instant" ? "default" : "outline"} onClick={() => setPublishMode("instant")}>Instant</Button>
+                      <Button variant={publishMode === "schedule" ? "default" : "outline"} onClick={() => setPublishMode("schedule")}>Schedule</Button>
+                    </div>
+                  </div>
+
+                  {publishMode === "instant" ? (
+                    <div className="text-sm text-gray-600">Posts will be created as published (status: 1).</div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-3">
+                        <Label className="min-w-[110px]">Frequency</Label>
+                        <select className="border rounded px-2 py-1" value={frequency} onChange={e => setFrequency(e.target.value as Frequency)}>
+                          <option value="once">Once (manual per post)</option>
+                          <option value="daily">Daily</option>
+                          <option value="weekly">Weekly</option>
+                          <option value="monthly">Monthly</option>
+                        </select>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <Label className="min-w-[110px]">First publish</Label>
+                        <input
+                          type="datetime-local"
+                          value={firstPublishIso}
+                          onChange={e => setFirstPublishIso(e.target.value)}
+                          className="border rounded px-2 py-1"
+                        />
+                        <div className="text-sm text-gray-500">This sets the datetime for the first post; others auto-fill below.</div>
+                      </div>
+
+                      <div>
+                        <div className="text-sm font-medium mb-2">Preview schedule</div>
+                        <div className="space-y-2">
+                          {titles.map((t, i) => (
+                            <div key={i} className="flex items-center gap-2">
+                              <div className="flex-1 text-sm">{t}</div>
+                              <input
+                                type="datetime-local"
+                                value={titleSchedules[i] ?? firstPublishIso}
+                                onChange={e => updateTitleScheduleAt(i, e.target.value)}
+                                className="border rounded px-2 py-1 text-sm"
+                              />
+                            </div>
+                          ))}
+                        </div>
+                        <div className="text-xs text-gray-500 mt-2">You can edit any individual publish time above before creating posts.</div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 <div className="border rounded-lg p-4 bg-gray-50">
                   <div className="text-sm font-medium mb-2">Titles ({titles.length})</div>
                   <ul className="list-disc pl-5 space-y-1">
                     {titles.map((t, i) => (
                       <li key={i} className="text-sm">
-                        {t}
+                        {t} {publishMode === "schedule" ? (<span className="ml-2 text-xs text-gray-500"> — {titleSchedules[i] ?? "-"}</span>) : null}
                       </li>
                     ))}
                   </ul>
@@ -642,9 +817,13 @@ export default function AiBlogsWizard() {
                   <Check className="h-4 w-4" /> Success — your blogs were created!
                 </div>
                 <p className="text-sm text-gray-600">You can manage or schedule them from the posts page.</p>
-                <Button variant="outline" onClick={() => navigate("/admin/project-list")}>
-                  Go to Projects
+                <Button
+                  variant="outline"
+                  onClick={() => navigate("/admin/blog-posts", { state: { projectId } })}
+                >
+                  Go to Blogs
                 </Button>
+
               </div>
             )}
           </div>
@@ -692,7 +871,7 @@ export default function AiBlogsWizard() {
           <Button
             type="button"
             onClick={step < totalSteps ? next : finish}
-            disabled={(locLoading && step === 2) || genLoading || submitLoading || (step === 5 && done)}
+            disabled={(locLoading && step === 2) || genLoading || submitLoading}
           >
             {step < totalSteps ? (
               <>
